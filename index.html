@@ -41,6 +41,8 @@
       accept="*.csv"
       multiple
     />
+    <br><br>
+    <button id="download-chart" onclick="downloadChart()" style="padding: 10px 20px; font-size: 16px;">Pobierz wykres</button>
   </div>
   
   </body>
@@ -302,16 +304,26 @@ function getPIabs(avertable) {
   var F300 = avertable[29];           // at 300us
   var Fj = avertable[47];             // at 2ms
   var Fm = Math.max(...avertable);;
-    
+
   var Fo = F50;
   var Vj = (Fj - Fo) / (Fm - Fo);
   var Mo = 4 * (F300 - Fo) / (Fm - Fo);
-    
+
   var S1 = (1 - Fo / Fm) / (Mo / Vj);
   var S2 = (Fm - Fo) / Fo;
   var S3 = (1 - Vj) / Vj;
-    
+
   return S1 * S2 * S3;
+}
+
+function downloadChart() {
+  const canvas = document.getElementById('ojipChart');
+  const url = canvas.toDataURL('image/png');
+
+  const link = document.createElement('a');
+  link.download = 'ojip-chart.png';
+  link.href = url;
+  link.click();
 }
 
 </script>
