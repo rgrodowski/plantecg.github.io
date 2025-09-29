@@ -17,7 +17,35 @@
     #chartbox {
       display: block;
       width: 600px;
-      height: 600px;
+    }
+
+    label[for="file-input"] {
+      padding: 12px 24px;
+      font-size: 16px;
+      background-color: #4CAF50;
+      color: white;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    label[for="file-input"]:hover {
+      background-color: #45a049;
+    }
+
+    #download-chart {
+      padding: 12px 24px;
+      font-size: 16px;
+      background-color: #2196F3;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    #download-chart:hover {
+      background-color: #0b7dda;
     }
   </style>
   
@@ -32,17 +60,20 @@
   <div style="width:600px; margin:0 auto; margin-bottom: 20px; id="chartbox">
     <canvas id="ojipChart"></canvas>   
   </div>
-  <div id="files">
-    <input
-      id="file-input"
-      type="file"
-      onchange="handleFileSelect(event)"
-      name="csv"
-      accept="*.csv"
-      multiple
-    />
-    <br><br>
-    <button id="download-chart" onclick="downloadChart()" style="padding: 10px 20px; font-size: 16px;">Pobierz wykres</button>
+  <div id="files" style="display: flex; flex-direction: column; align-items: center; gap: 15px;">
+    <label for="file-input">
+      Select CSV files
+      <input
+        id="file-input"
+        type="file"
+        onchange="handleFileSelect(event)"
+        name="csv"
+        accept="*.csv"
+        multiple
+        style="display: none;"
+      />
+    </label>
+    <button id="download-chart" onclick="downloadChart()">Download chart</button>
   </div>
   
   </body>
