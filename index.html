@@ -1,0 +1,319 @@
+
+<!DOCTYPE html> <html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chlorophyll Fluorescence</title>
+  
+  <style>
+    html { font-family: Helvetica;
+      display: inline-block;
+      margin: 0px auto; 
+      text-align: center;}
+      
+    body{margin-top: 10px;} 
+    h3 {color: #444444;margin-bottom: 50px;}
+    
+    #chartbox {
+      display: block;
+      width: 600px;
+      height: 600px;
+    }
+  </style>
+  
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  </head>
+  <body>
+  
+    <h3>PlantECG fluorymeter data processing</h3>
+    
+  
+  <div style="width:600px; margin:0 auto; margin-bottom: 20px; id="chartbox">
+    <canvas id="ojipChart"></canvas>   
+  </div>
+  <div id="files">
+    <input
+      id="file-input"
+      type="file"
+      onchange="handleFileSelect(event)"
+      name="csv"
+      accept="*.csv"
+      multiple
+    />
+  </div>
+  
+  </body>
+  
+<script>
+  
+  var measNr = 0;               //nr measurements
+  var dataRes = [];             //data from file
+  var timeRes = [];             //time from file
+  var scatRes = [];             //time + data for chart
+  var stringres = "";           //csv file  for save 
+  var Temp, Press, Hum, Fo, Fm, Fv_Fm, PIabs;
+  var colorpalette = ["green", "orange", "magenta", "gray", "blue", "lime", 
+                      "violet", "brown", "purple", "cyan", "darkgreen", "red",
+                      "gold", "khaki", "lightgreen", "plum", "greenyellow", "tomato"];
+  
+  const labels = [];
+  let data = {
+    labels: labels,
+    datasets: [],
+  }
+  
+  const config = {
+    type: 'scatter',
+    data: data,
+    options: {
+      responsive: true,
+      title: {
+        display: true,
+        text: 'OJIP Fluorescence'
+      },
+      scales: {
+        x: {
+          type:'logarithmic',
+          title: {
+            display: true,
+            text: 'Time [ms]'
+          }
+        },
+        y: {
+          title: {
+            display: true,
+            text: 'Fluorescence [rel. units]'
+          }
+        }
+      },
+      plugins: {
+        legend: {
+          display: true
+        }
+      }
+    },                                  //change
+    plugins: [{
+      afterDraw: function (chart) {
+          const ctx = chart.ctx;
+          const xAxis = chart.scales.x;
+          const yAxis = chart.scales.y;
+          
+          // Draw vertical line at x-axis value 2
+          const xValue = xAxis.getPixelForValue(2);
+          ctx.save();
+          ctx.strokeStyle = 'green'; //'rgb(33, 255, 33)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(xValue, yAxis.bottom);
+          ctx.lineTo(xValue, yAxis.top);
+          ctx.stroke();
+          ctx.restore();
+          
+          // Draw vertical line at x-axis value 30
+          const x2Value = xAxis.getPixelForValue(30);
+          ctx.save();
+          ctx.strokeStyle = 'rgb(33, 255, 33)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(x2Value, yAxis.bottom);
+          ctx.lineTo(x2Value, yAxis.top);
+          ctx.stroke();
+          ctx.restore();
+      }
+    }]
+  };
+
+// chart creation
+let ctx = document.getElementById("ojipChart").getContext('2d');
+let myChart = new Chart(ctx, config);
+
+//////////////////file uploaad/////////////////////////
+
+function handleFileSelect(e) {
+  const countFiles = e.target.files.length;
+  Array.from(e.target.files).forEach(function(file) {
+    const reader = new FileReader();
+    reader.onload = function() {
+      const contents = reader.result;
+      files.push(contents);
+      tryStartProcessFiles(countFiles);
+    };
+    reader.readAsText(file);
+  });
+}
+
+const files = [];
+function tryStartProcessFiles(expectedSize) {
+    if (files.length < expectedSize) {
+      console.log("still waiting for " + (expectedSize - files.length) + " loads");
+      return;
+    }
+    const nrFiles = files.length;
+    console.log("got " + files.length + " elements in files");
+    //files.forEach((file) => console.log("file is " + file.length + " characters long"));
+    files.forEach((file) => handleData(file, nrFiles));
+}
+
+function handleData(fil, nrfil) {
+  if (nrfil == 1) {                             //nr uploaded files
+    const dataRows = fil.split("\n");
+    var resdata;
+    var nrRows = 0;
+    var timedata = dataRows[0];
+    timeRes = timedata.split(',').map(Number);
+    if (timeRes[0] != 0.01) {return;}
+    for (const rowarr of dataRows) { 
+      dataRes = rowarr.split(',').map(Number);
+      if (dataRes[0] == 0) {
+        break;
+      }
+      if (nrRows > 0) {                        //skip time data from series
+        var label = measNr + 1;
+        handleNewDataSet(timeRes, dataRes, label);
+      }
+      var str = "res";
+      if (nrRows == 0) {
+        str = "time"
+      } else {
+        str += String(nrRows);
+      }
+      appendCSVarr(dataRes, str);
+      nrRows++;
+    }
+    if (nrRows > 2) {                         // average calculations
+      createAverChart(dataRows, nrRows);
+    }
+  }
+}
+
+function handleNewDataSet(timeRes, dataRes, label) {
+  scatRes = mergeData(timeRes, dataRes);
+  nextDataset(label);
+  addDataSet(myChart, scatRes);           // new line on chart
+  measNr++;
+}
+
+function mergeData(tres, datres){
+  var storage = [];
+  for (c = 0; c < tres.length; c++) {
+    var entry = {y: datres[c], x: tres[c]};
+    storage.push(entry);
+  }
+  return storage;
+}
+
+function nextDataset(lab) {
+  let newDataset = {
+    label: lab,
+    pointRadius: 2,
+    data: scatRes,
+    backgroundColor: colorpalette[measNr]
+  }
+  data.datasets.push(newDataset);
+}
+
+function addDataSet(myChart, newData) {
+  for (var n = 0; n < newData.length; n++) {
+    var point = newData[n];
+    myChart.data.datasets[measNr].data[n] = point;
+  }
+  myChart.update();
+}
+
+function appendCSVarr(datares, str) {
+  stringres += str + ",";
+  stringres += datares.join(',');
+  stringres += "\n";
+}
+
+function createAverChart(datarows, nrrows) {
+    var upperCurv = [];
+    var bottCurv = [];
+    var averTable = [];
+    const sD = (arr, usePopulation = false) => {
+      const mean = arr.reduce((acc, val) => acc + val, 0) / arr.length;
+      return Math.sqrt(
+        arr
+          .reduce((acc, val) => acc.concat((val - mean) ** 2), [])
+          .reduce((acc, val) => acc + val, 0) /
+          (arr.length - (usePopulation ? 0 : 1))
+        );
+    };
+    
+    var timedat = datarows[0].split(',')      // 118
+    var strLen = timedat.length;
+    
+    for (var j = 0; j < strLen; j++) {        // over all data points
+      var sumpos = 0;
+      var posval = [];
+      var sdpos  = 0;
+      
+      for (var i = 1; i < nrrows; i++) {      //over all curves
+        var datrow = datarows[i].split(',');
+        datrow = datrow.map(Number);
+        posval.push(datrow[j]);
+        sumpos += datrow[j];
+      }
+      
+      var avr = Math.round(sumpos * 100 / (nrrows - 1)) / 100;
+      averTable.push(avr);
+      
+      sdpos = sD(posval);
+      upperCurv.push(Math.round((avr + sdpos) * 100) / 100);
+      bottCurv.push(Math.round((avr - sdpos) * 100) / 100);
+    }
+    
+    myChart.data.datasets.forEach(function(ds) {
+      ds.hidden = true;
+    });
+    
+    var label = "+SD";
+    handleNewDataSet(timeRes, upperCurv, label);
+    appendCSVarr(upperCurv, label);
+
+    label = "Average";
+    handleNewDataSet(timeRes, averTable, label);
+    appendCSVarr(averTable, label);
+
+    label = "-SD";
+    handleNewDataSet(timeRes, bottCurv, label);
+    appendCSVarr(bottCurv, label);
+    
+    downloadCSV(stringres);
+    //console.log(stringres);
+
+}
+
+function downloadCSV(stringres) {
+  
+  var hiddenElement = document.createElement('a');
+  hiddenElement.href = 'data:attachment/text,' + encodeURI(stringres);
+  hiddenElement.target = '_blank';
+  hiddenElement.download = 'ojip.csv';
+  hiddenElement.click();
+  
+}
+
+
+
+function getPIabs(avertable) {
+  var F50 = avertable[4];          //fluorescence at 50us
+  var F300 = avertable[29];           // at 300us
+  var Fj = avertable[47];             // at 2ms
+  var Fm = Math.max(...avertable);;
+    
+  var Fo = F50;
+  var Vj = (Fj - Fo) / (Fm - Fo);
+  var Mo = 4 * (F300 - Fo) / (Fm - Fo);
+    
+  var S1 = (1 - Fo / Fm) / (Mo / Vj);
+  var S2 = (Fm - Fo) / Fo;
+  var S3 = (1 - Vj) / Vj;
+    
+  return S1 * S2 * S3;
+}
+
+</script>
+</html>
+
