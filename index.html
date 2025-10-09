@@ -1,5 +1,5 @@
 
-<!DOCTYPE html><html>
+<!DOCTYPE html> <html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -18,7 +18,6 @@
       display: block;
       width: 600px;
     }
-
     label[for="file-input"] {
       padding: 12px 24px;
       font-size: 16px;
@@ -58,9 +57,9 @@
     
   
   <div style="width:600px; margin:0 auto; margin-bottom: 20px; id="chartbox">
-    <canvas id="ojipChart"></canvas>   
-  </div>
-  <div id="files" style="display: flex; flex-direction: column; align-items: center; gap: 15px;">
+    <canvas id="ojipChart"></canvas>  
+    
+      <div id="files" style="display: flex; flex-direction: column; align-items: center; gap: 15px;">
     <label for="file-input">
       Select CSV files
       <input
@@ -73,22 +72,46 @@
         style="display: none;"
       />
     </label>
-    <button id="download-chart" onclick="downloadChart()">Download chart</button>
+    <button id="download-chart" onclick="sendResults(stringres)">&nbsp;&nbsp;&nbsp;&nbsp;
+      Get results&nbsp;&nbsp;&nbsp;</button>
   </div>
-  
+    
+    
+    
+<!--     
+  </div>
+  <div id="files">
+    <input
+      id="file-input"
+      type="file"
+      onchange="handleFileSelect(event)"
+      name="csv"
+      accept="*.csv"
+      multiple
+    />
+  </div>
+-->  
   </body>
   
 <script>
   
+  var e = document.getElementById("download-chart");
+  e.style.display = 'none';   //block get results button
+
+  
   var measNr = 0;               //nr measurements
-  var dataRes = [];             //data from file
   var timeRes = [];             //time from file
   var scatRes = [];             //time + data for chart
+  var averTable = [];
+  var maxBuff = [];             // for fmpos()
   var stringres = "";           //csv file  for save 
-  var Temp, Press, Hum, Fo, Fm, Fv_Fm, PIabs;
+  var allFiles = [];            // files to download
   var colorpalette = ["green", "orange", "magenta", "gray", "blue", "lime", 
                       "violet", "brown", "purple", "cyan", "darkgreen", "red",
-                      "gold", "khaki", "lightgreen", "plum", "greenyellow", "tomato"];
+                      "gold", "khaki", "lightgreen", "plum", "greenyellow", "tomato",
+                      "moccasin", "darkkhaki", "blueviolet", "lavender", "darkcyan",
+                      "firebrick", "skyblue", "lightgreen", "plum", "orchid", "salmon",
+                      "peru", "yellow", "olive", "navy", "deeppink"];
   
   const labels = [];
   let data = {
@@ -124,6 +147,11 @@
         legend: {
           display: true
         }
+      },
+      plugins: {
+        customCanvasBackgroundColor: {
+          color: 'white'
+        }
       }
     },                                  //change
     plugins: [{
@@ -154,14 +182,27 @@
           ctx.stroke();
           ctx.restore();
       }
-    }]
+    }],
+    plugins: [{
+    id: 'customCanvasBackgroundColor',
+    beforeDraw: (chart, args, options) => {
+      const {
+        ctx
+      } = chart;
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-over';
+      ctx.fillStyle = options.color || '#99ffff';
+      ctx.fillRect(0, 0, chart.width, chart.height);
+      ctx.restore();
+    }
+  }]
   };
 
 // chart creation
 let ctx = document.getElementById("ojipChart").getContext('2d');
 let myChart = new Chart(ctx, config);
 
-//////////////////file uploaad/////////////////////////
+//////////////////file upload/////////////////////////
 
 function handleFileSelect(e) {
   const countFiles = e.target.files.length;
@@ -176,52 +217,106 @@ function handleFileSelect(e) {
   });
 }
 
-const files = [];
+var files = [];
+
 function tryStartProcessFiles(expectedSize) {
-    if (files.length < expectedSize) {
-      console.log("still waiting for " + (expectedSize - files.length) + " loads");
-      return;
-    }
-    const nrFiles = files.length;
-    console.log("got " + files.length + " elements in files");
-    //files.forEach((file) => console.log("file is " + file.length + " characters long"));
-    files.forEach((file) => handleData(file, nrFiles));
+  if (files.length < expectedSize) {
+    console.log("still waiting for " + (expectedSize - files.length) + " loads");
+    return;
+  }
+  const nrFiles = files.length;
+  console.log("got " + files.length + " elements in files");
+  //files.forEach((file) => console.log("file is " + file.length + " characters long"));
+  files.forEach((file) => handleData(file, nrFiles));
 }
 
-function handleData(fil, nrfil) {
-  if (nrfil == 1) {                             //nr uploaded files
-    const dataRows = fil.split("\n");
-    var resdata;
-    var nrRows = 0;
-    var timedata = dataRows[0];
-    timeRes = timedata.split(',').map(Number);
-    if (timeRes[0] != 0.01) {return;}
-    for (const rowarr of dataRows) { 
-      dataRes = rowarr.split(',').map(Number);
-      if (dataRes[0] == 0) {
-        break;
-      }
-      if (nrRows > 0) {                        //skip time data from series
-        var label = measNr + 1;
-        handleNewDataSet(timeRes, dataRes, label);
-      }
-      var str = "res";
-      if (nrRows == 0) {
-        str = "time"
-      } else {
-        str += String(nrRows);
-      }
-      appendCSVarr(dataRes, str);
-      nrRows++;
+var filenr = 1;
+var allAver = [];
+                                    ///////handleData/////////////
+function handleData(file, nrfiles) {
+  const allRows = file.split("\n");
+  timeRes = allRows[0].split(',');
+  
+  if (timeRes[0] != 0.01) {
+    alert("Wrong file format");
+    files = [];
+    return;             
+  }
+  const dataRes = readRows(allRows);             // extract data rows 
+  const nrRows = dataRes.length;
+  
+  if (filenr == 1) {
+    appendCSV(timeRes, "time");
+  } 
+  
+  if (nrfiles == 1) {
+    if (nrRows == 2) {
+      appendCSV(dataRes[1], "res1");
+      addOJIPpar();
+      handleNewDataSet(timeRes, dataRes[1], "1");   //label
+      addAmb(allRows);
+      e.style.display = 'block';            //show 'Get results' button
+      //console.log(stringres);
+      return;
     }
-    if (nrRows > 2) {                         // average calculations
-      createAverChart(dataRows, nrRows);
+    if (nrRows > 2) {
+      for (nrr = 1; nrr < nrRows; nrr++) {
+        appendCSV(dataRes[nrr], "res" + nrr);
+        handleNewDataSet(timeRes, dataRes[nrr], nrr);   //label
+      }
+      createAverChart(dataRes);
+      addOJIPpar();
+      addAmb(allRows);
+      e.style.display = 'block';            //show 'Get results' button
+      //downloadCSV(stringres);
+    }
+  } else {
+    averTable = getAver(dataRes);
+    console.log("files", filenr, nrfiles);
+    appendCSV(averTable, "aver" + (filenr));
+    handleNewDataSet(timeRes, averTable, "a" + (filenr));   //label
+    allAver.push(averTable);
+    filenr++; 
+    averTable = [];
+    if (filenr > nrfiles) {
+      console.log('fnr', filenr, nrfiles);
+      addOJIPpar();
+      e.style.display = 'block';            //show 'Get results' button
+      //downloadCSV(stringres);
     }
   }
 }
 
-function handleNewDataSet(timeRes, dataRes, label) {
-  scatRes = mergeData(timeRes, dataRes);
+function readRows(allRows) {
+  var dataRows = [];                                     //numeric data
+  
+  for (row of allRows) { 
+    if (row.length == 0) {break;}
+    dataRows.push(row.split(',').map(Number));
+  }
+  return dataRows;
+}
+
+function getAver(dataRes) {
+  var rowLen = dataRes[0].length;           // 118
+  for (var j = 0; j < rowLen; j++) {        // over all data points
+    var sumpos = 0;
+    var posval = [];
+  
+    for (var n = 1; n < dataRes.length; n++) {      //over all curves
+      var datrow = dataRes[n];
+      datrow = datrow.map(Number);
+      posval.push(datrow[j]);
+      sumpos += datrow[j];
+    }
+    var avr = Math.round(sumpos * 100 / (dataRes.length - 1)) / 100;
+    averTable.push(avr);
+  }
+  return averTable;
+}
+
+function handleNewDataSet(timeRes, datares, label) {
+  scatRes = mergeData(timeRes, datares);
   nextDataset(label);
   addDataSet(myChart, scatRes);           // new line on chart
   measNr++;
@@ -254,109 +349,202 @@ function addDataSet(myChart, newData) {
   myChart.update();
 }
 
-function appendCSVarr(datares, str) {
+function appendCSV(datares, str) {
+  maxBuff = datares;                   // store current data to fmpos()
   stringres += str + ",";
   stringres += datares.join(',');
   stringres += "\n";
 }
 
-function createAverChart(datarows, nrrows) {
-    var upperCurv = [];
-    var bottCurv = [];
-    var averTable = [];
-    const sD = (arr, usePopulation = false) => {
-      const mean = arr.reduce((acc, val) => acc + val, 0) / arr.length;
-      return Math.sqrt(
-        arr
-          .reduce((acc, val) => acc.concat((val - mean) ** 2), [])
-          .reduce((acc, val) => acc + val, 0) /
-          (arr.length - (usePopulation ? 0 : 1))
-        );
-    };
-    
-    var timedat = datarows[0].split(',')      // 118
-    var strLen = timedat.length;
-    
-    for (var j = 0; j < strLen; j++) {        // over all data points
-      var sumpos = 0;
-      var posval = [];
-      var sdpos  = 0;
-      
-      for (var i = 1; i < nrrows; i++) {      //over all curves
-        var datrow = datarows[i].split(',');
-        datrow = datrow.map(Number);
-        posval.push(datrow[j]);
-        sumpos += datrow[j];
-      }
-      
-      var avr = Math.round(sumpos * 100 / (nrrows - 1)) / 100;
-      averTable.push(avr);
-      
-      sdpos = sD(posval);
-      upperCurv.push(Math.round((avr + sdpos) * 100) / 100);
-      bottCurv.push(Math.round((avr - sdpos) * 100) / 100);
-    }
-    
-    myChart.data.datasets.forEach(function(ds) {
-      ds.hidden = true;
-    });
-    
-    var label = "+SD";
-    handleNewDataSet(timeRes, upperCurv, label);
-    appendCSVarr(upperCurv, label);
+function createAverChart(allrows) {
+  var upperCurv = [];
+  var bottCurv = [];
 
-    label = "Average";
+  const sD = (arr, usePopulation = false) => {
+    const mean = arr.reduce((acc, val) => acc + val, 0) / arr.length;
+    return Math.sqrt(
+      arr
+        .reduce((acc, val) => acc.concat((val - mean) ** 2), [])
+        .reduce((acc, val) => acc + val, 0) /
+        (arr.length - (usePopulation ? 0 : 1))
+      );
+  };
+    
+  timeRes = allrows[0];
+  const rowLen = timeRes.length     // 118
+    
+  for (var j = 0; j < rowLen; j++) {        // over all data points
+    var sumpos = 0;
+    var posval = [];
+    
+    for (var i = 1; i < allrows.length; i++) {      //over all curves
+      var datrow = allrows[i];
+      datrow = datrow.map(Number);
+      posval.push(datrow[j]);
+      sumpos += datrow[j];
+    }
+      
+    var avr = Math.round(sumpos * 100 / (allrows.length - 1)) / 100;
+    averTable.push(avr);
+  
+    sdpos = sD(posval);
+    upperCurv.push(Math.round((avr + sdpos) * 100) / 100);
+    bottCurv.push(Math.round((avr - sdpos) * 100) / 100);
+  }
+  myChart.data.datasets.forEach(function(ds) {
+    ds.hidden = true;
+  });
+  
+  var label;
+    label = "+SD";
+    handleNewDataSet(timeRes, upperCurv, label);
+    appendCSV(upperCurv, label);
+    
+    label = "Aver";
     handleNewDataSet(timeRes, averTable, label);
-    appendCSVarr(averTable, label);
+    appendCSV(averTable, label);
 
     label = "-SD";
     handleNewDataSet(timeRes, bottCurv, label);
-    appendCSVarr(bottCurv, label);
-    
-    downloadCSV(stringres);
-    //console.log(stringres);
-
+    appendCSV(bottCurv, label);
+      
+    // downloadCSV(stringres);
 }
 
 function downloadCSV(stringres) {
-  
   var hiddenElement = document.createElement('a');
   hiddenElement.href = 'data:attachment/text,' + encodeURI(stringres);
   hiddenElement.target = '_blank';
-  hiddenElement.download = 'ojip.csv';
+  hiddenElement.download = 'ojipres.csv';
   hiddenElement.click();
+}
+
+var rowData;
+
+function addOJIPpar() {   // working on the stringres
   
+  stringres += '\n';
+  stringres += 'JIP_Param,';
+  stringres += parNames + '\n';
+  
+  var rowsTab = stringres.split('\n');      // global stringres
+  var r = 1;                                // row 0 time
+  do {
+    var rowSpl = rowsTab[r].split(',');
+    var rowName = rowSpl[0];
+    var cond1 = rowName.localeCompare("+SD");
+    var cond2 = rowName.localeCompare("-SD");
+    
+    if (!(cond1 === 0) && !(cond2 === 0)) {
+      rowData = rowSpl.slice(1, rowSpl.length);
+      stringres += rowName + ',';
+      calcRow(rowData);                       // single row array of strings
+    }
+    r++;
+  } while (rowsTab[r].length > 0);
+  
+  //stringres += "\n" + Temp + Press + Hum;
 }
 
-
-
-function getPIabs(avertable) {
-  var F50 = avertable[4];          //fluorescence at 50us
-  var F300 = avertable[29];           // at 300us
-  var Fj = avertable[47];             // at 2ms
-  var Fm = Math.max(...avertable);;
-
-  var Fo = F50;
-  var Vj = (Fj - Fo) / (Fm - Fo);
-  var Mo = 4 * (F300 - Fo) / (Fm - Fo);
-
-  var S1 = (1 - Fo / Fm) / (Mo / Vj);
-  var S2 = (Fm - Fo) / Fo;
-  var S3 = (1 - Vj) / Vj;
-
-  return S1 * S2 * S3;
+function calcRow(rowData) {
+  var parObj = getParam(rowData);                      // make parameter table
+  const calcp = calcPar.split(',');
+  for (const name of calcp) {
+    var pval = parObj[name];
+  if (name.localeCompare("Sm_tFm") == 0) {
+    pval = Math.round(pval * 10000) / 10000;
+  } else {
+    pval = Math.round(pval * 100) / 100;
+  }
+    var printName = nameTransl[name];
+    stringres += pval.toString() + ',';
+  }
+  stringres += '\n';
 }
 
-function downloadChart() {
+function getParam(rowData) {                   // translate param names and get formulas
+  const a = rowData;                            // a -> translation table !
+  var L = {};
+  for (i = 0; i < formP.length; i++) {    // global formP array fromPar string
+    var par = calcP[i];
+    L[par] = eval(formP[i]);
+  }
+  return L;
+}
+
+// courtesy V.Goltsev & M.Paunov
+
+var parNames = "Fo,F50,F100,F300,Fj,Fi,Fm,V50,V300,Fv/Fm,Phi(Eo),Phi(Ro),Phi(Do),";
+parNames += "Vj,Vi,DELTA(Ro),Psi(Eo),S2,S3,S4,t(Fm),Mo,S1,Sm/t(Fm),Ss,";
+parNames += "ABS/RC,TRo/RC,TRo/RC(to),DIo/RC(to),RC/ABS,GAMMA(Rc),Fv/Fm/(1-Fv/Fm),";
+parNames += "Psi(Eo)/(1-Psi(Eo)),Pi(ABS),Pi(total),Kn,Kp,Piabs-2,Pitotal-2";
+
+var parN = parNames.split(',');
+var nameTransl = {};
+
+var calcPar = "Fo,F50,F100,F300,Fj,Fi,Fm,V50,V300,FvFm,PhiEo,PhiRo,PhiDo,Vj,Vi,";   //14
+calcPar += "DELTARo,PsiEo,S2,S3,S4,tFm,Mo,S1,Sm_tFm,Ss,ABSRC,TRoRC,TRoRCto,";       //27
+calcPar += "DIoRCto,RCABS,GAMMARc,FvFmFct,PsiFct,PIabs,PItot,";                     //34
+calcPar += "Kn,Kp,Piabs_2,Pitot_2";                                                 //38
+
+var calcP = calcPar.split(',');
+
+for (i = 0; i < parN.length; i++) {
+  nameTransl[calcP[i]] = parN[i];
+}
+
+var formPar = "a[0],a[4],a[9],a[29],a[47],a[84],amax(),";                            //0,1,2,3,4,5,6
+formPar += "(L.F50-L.Fo)/(L.Fm-L.Fo),(L.F300-L.F50)/(L.Fm-L.F50),(L.Fm-L.Fo)/L.Fm,(L.Fm-L.Fj)/L.Fm,";//7,8,9,10
+formPar += "(L.Fm-L.Fi)/L.Fm,1-L.FvFm,(L.Fj-L.Fo)/(L.Fm-L.Fo),";                      //11,12,13
+formPar += "(L.Fi-L.Fo)/(L.Fm-L.Fo),(1-L.Vi)/(1-L.Vj),1-((L.Fj-L.Fo)/(L.Fm-L.Fo)),";  //14,15,16
+formPar += "(L.Fm-L.Fo)/L.Fo,(1-L.Vj)/L.Vj,(1-L.Vi)/(L.Vi-L.Vj),fmpos(),";            //17,18,19,20
+formPar += "4*(L.F300-L.F50)/(L.Fm-L.F50),(1-L.Fo/L.Fm)/(L.Mo/L.Vj),L.S1/fmpos(),";   //21,22,23
+formPar += "L.Vj/L.Mo,L.Mo*((1/L.Vj)*(1/L.FvFm)),L.Mo*(1/L.Vj),L.TRoRC*L.PsiEo,";     //24,25,26,27
+formPar += "L.ABSRC-L.TRoRCto,1/(L.ABSRC),L.RCABS/(1/L.RCABS),";                      //28,29,30
+formPar += "L.FvFm/(1-L.FvFm),L.PsiEo/(1-L.PsiEo),";                                  //31,32
+formPar += "L.RCABS * L.FvFmFct * L.PsiFct,";                                         //33
+formPar += "L.PIabs * (L.DELTARo/(1-L.DELTARo)),";                                    //34
+formPar += "L.Fo/L.Fm,(L.Fm-L.Fo)/L.Fm,L.S1 * L.S2 * L.S3,L.Piabs_2 * L.S4";          //35,36,37,38
+
+var formP = formPar.split(',');
+
+
+function amax() {
+  return Math.max.apply(null, rowData);
+}
+
+function fmpos() {
+  const newrow = rowData.map(Number);
+  let i = newrow.indexOf(Math.max(...newrow));
+  return timeRes[i];
+}
+function addAmb(allRows) {
+  const ambDat = allRows.slice(-6);
+  var temp = ambDat[0];
+  var press = ambDat[1];
+  var hum = ambDat[2];
+  
+  stringres += '\n' + temp + press + hum;
+}
+
+var timeToWait = 1000; 
+function waitFunction() {
   const canvas = document.getElementById('ojipChart');
-  const url = canvas.toDataURL('image/png');
+  const image = canvas.toDataURL();
+  var aDownloadLink = document.createElement('a');
+  aDownloadLink.download = 'oijpimg.png';
+  aDownloadLink.href = image;
+  aDownloadLink.click();
+ }
+ 
+ function sendResults(stringres) {
 
-  const link = document.createElement('a');
-  link.download = 'ojip-chart.png';
-  link.href = url;
-  link.click();
+  downloadCSV(stringres);
+  setTimeout(function(){ waitFunction(); }, timeToWait);
 }
+
 
 </script>
 </html>
+
 
