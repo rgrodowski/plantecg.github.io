@@ -241,7 +241,7 @@ function handleData(file) {
     appendCSV(timeRes, "time");
   } 
   if (nrRows == 2) {
-    handleNewDataSet(timeRes, handleRows[1], filenr);   //label
+    handleNewDataSet(timeRes, handleRows[1], "aver1");   //label
     appendCSV(handleRows[1], "aver1");
     addOJIPpar(handleRows[1], "aver1");
     e.style.display = 'block';            //show 'Get results' button
