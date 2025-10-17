@@ -1,4 +1,3 @@
-
 <!DOCTYPE html> <html>
 <head>
   <meta charset="UTF-8">
@@ -46,16 +45,16 @@
     #download-chart:hover {
       background-color: #0b7dda;
     }
+    
+    
   </style>
   
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   </head>
   <body>
-  
     <h3>PlantECG fluorymeter data processing</h3>
     
-  
   <div style="width:600px; margin:0 auto; margin-bottom: 20px; id="chartbox">
     <canvas id="ojipChart"></canvas>  
     
@@ -72,25 +71,13 @@
         style="display: none;"
       />
     </label>
-    <button id="download-chart" onclick="sendResults(stringres)">&nbsp;&nbsp;&nbsp;&nbsp;
+    <button id="download-chart" onclick="sendResults()">&nbsp;&nbsp;&nbsp;&nbsp;
       Get results&nbsp;&nbsp;&nbsp;</button>
   </div>
-    
-    
-    
-<!--     
-  </div>
-  <div id="files">
-    <input
-      id="file-input"
-      type="file"
-      onchange="handleFileSelect(event)"
-      name="csv"
-      accept="*.csv"
-      multiple
-    />
-  </div>
--->  
+  <br>
+    <div style="width: 500px; height: 500px; margin: 0 auto 100px auto;">
+      <canvas id="radarChart"></canvas>
+    </div>
   </body>
   
 <script>
@@ -102,7 +89,7 @@
   var measNr = 0;               //nr measurements
   var timeRes = [];             //time from file
   var scatRes = [];             //time + data for chart
-  var averTable = [];
+  //var radarRes = [];
   var maxBuff = [];             // for fmpos()
   var stringres = "";           //csv file  for save 
   var allFiles = [];            // files to download
@@ -218,73 +205,84 @@ function handleFileSelect(e) {
 }
 
 var files = [];
+var fnr = 0;
+var nrFiles = 0;
 
 function tryStartProcessFiles(expectedSize) {
   if (files.length < expectedSize) {
     console.log("still waiting for " + (expectedSize - files.length) + " loads");
     return;
   }
-  const nrFiles = files.length;
+  nrFiles = files.length;
   console.log("got " + files.length + " elements in files");
   //files.forEach((file) => console.log("file is " + file.length + " characters long"));
-  files.forEach((file) => handleData(file, nrFiles));
-}
-
-var filenr = 1;
-var allAver = [];
-                                    ///////handleData/////////////
-function handleData(file, nrfiles) {
-  const allRows = file.split("\n");
-  timeRes = allRows[0].split(',');
-  
-  if (timeRes[0] != 0.01) {
-    alert("Wrong file format");
-    files = [];
-    return;             
+  //files.forEach((file) => handleData(file, nrFiles));
+  for (f = fnr; f < files.length; f++) {
+      handleData(files[f], nrFiles);
   }
-  const dataRes = readRows(allRows);             // extract data rows 
-  const nrRows = dataRes.length;
+  fnr = nrFiles;
+}
+var allRows = [];
+var filenr = 0;                     //uploaded files nr
+                                    ///////handleData/////////////
+function handleData(file) {
+  filenr++;
+  allRows = file.split("\n");
+  timeRes = allRows[0].split(',');
+  if (timeRes[0] != 0.01 && timeRes.length != 119) {
+    alert("Wrong file format");
+    location.reload();
+    return;             
+  }  
+  var handleRows = readRows(allRows);             // extract data rows 
+  const nrRows = handleRows.length;
   
-  if (filenr == 1) {
+  if (filenr == 1) {                            // first row time
     appendCSV(timeRes, "time");
   } 
-  
-  if (nrfiles == 1) {
-    if (nrRows == 2) {
-      appendCSV(dataRes[1], "res1");
-      addOJIPpar();
-      handleNewDataSet(timeRes, dataRes[1], "1");   //label
-      addAmb(allRows);
-      e.style.display = 'block';            //show 'Get results' button
-      //console.log(stringres);
-      return;
-    }
+  if (nrRows == 2) {
+    handleNewDataSet(timeRes, handleRows[1], filenr);   //label
+    appendCSV(handleRows[1], "aver1");
+    addOJIPpar(handleRows[1], "aver1");
+    e.style.display = 'block';            //show 'Get results' button
+  } 
     if (nrRows > 2) {
-      for (nrr = 1; nrr < nrRows; nrr++) {
-        appendCSV(dataRes[nrr], "res" + nrr);
-        handleNewDataSet(timeRes, dataRes[nrr], nrr);   //label
+      
+      if (filenr == 1) {
+        for (nrr = 1; nrr < nrRows; nrr++) {
+          handleNewDataSet(timeRes, handleRows[nrr], 'res' + nrr);   //label
+        }
+        createAverChart(handleRows);
       }
-      createAverChart(dataRes);
-      addOJIPpar();
-      addAmb(allRows);
+      if (filenr == 2) {
+        filterChart('aver1', true);               // true - return chart with aver
+        myChart.data.datasets[0].backgroundColor = ['green'];
+        measNr = 1;
+      }
+      var avRes = getAver(handleRows);
+      appendCSV(avRes, "aver" + filenr);
+      
+      if (filenr != 1){
+        handleNewDataSet(timeRes, avRes, 'a' + filenr);   //label
+      }
+
       e.style.display = 'block';            //show 'Get results' button
-      //downloadCSV(stringres);
+      addOJIPpar(avRes, 'a' + filenr);
+    }  
+    //console.log('stringres', stringres.split('\n'));
+}
+
+includ = true;
+
+function filterChart(targetLabel, includ) {
+  myChart.data.datasets = myChart.data.datasets.filter(function(obj) {
+    if (includ == true){
+      return (obj.label == targetLabel); 
+    } else {
+      return (obj.label != targetLabel); 
     }
-  } else {
-    averTable = getAver(dataRes);
-    console.log("files", filenr, nrfiles);
-    appendCSV(averTable, "aver" + (filenr));
-    handleNewDataSet(timeRes, averTable, "a" + (filenr));   //label
-    allAver.push(averTable);
-    filenr++; 
-    averTable = [];
-    if (filenr > nrfiles) {
-      console.log('fnr', filenr, nrfiles);
-      addOJIPpar();
-      e.style.display = 'block';            //show 'Get results' button
-      //downloadCSV(stringres);
-    }
-  }
+  });
+  myChart.update(); 
 }
 
 function readRows(allRows) {
@@ -298,6 +296,7 @@ function readRows(allRows) {
 }
 
 function getAver(dataRes) {
+  var avtab = [];
   var rowLen = dataRes[0].length;           // 118
   for (var j = 0; j < rowLen; j++) {        // over all data points
     var sumpos = 0;
@@ -310,43 +309,34 @@ function getAver(dataRes) {
       sumpos += datrow[j];
     }
     var avr = Math.round(sumpos * 100 / (dataRes.length - 1)) / 100;
-    averTable.push(avr);
+    avtab.push(avr);
   }
-  return averTable;
+  return avtab;
 }
 
 function handleNewDataSet(timeRes, datares, label) {
-  scatRes = mergeData(timeRes, datares);
-  nextDataset(label);
-  addDataSet(myChart, scatRes);           // new line on chart
+  //console.log('tres datres', timeRes, datares);
+  var scatDat = mergeData(timeRes, datares)
+  var updatset = {
+    label: label,
+    backgroundColor: colorpalette[measNr],
+    pointRadius: 2,
+    data: scatDat
+  };
+  myChart.data.datasets.push(updatset);
+
+  myChart.update();           // new line on chart
   measNr++;
 }
 
 function mergeData(tres, datres){
+  
   var storage = [];
   for (c = 0; c < tres.length; c++) {
     var entry = {y: datres[c], x: tres[c]};
     storage.push(entry);
   }
   return storage;
-}
-
-function nextDataset(lab) {
-  let newDataset = {
-    label: lab,
-    pointRadius: 2,
-    data: scatRes,
-    backgroundColor: colorpalette[measNr]
-  }
-  data.datasets.push(newDataset);
-}
-
-function addDataSet(myChart, newData) {
-  for (var n = 0; n < newData.length; n++) {
-    var point = newData[n];
-    myChart.data.datasets[measNr].data[n] = point;
-  }
-  myChart.update();
 }
 
 function appendCSV(datares, str) {
@@ -359,7 +349,8 @@ function appendCSV(datares, str) {
 function createAverChart(allrows) {
   var upperCurv = [];
   var bottCurv = [];
-
+  var averTable = [];
+  
   const sD = (arr, usePopulation = false) => {
     const mean = arr.reduce((acc, val) => acc + val, 0) / arr.length;
     return Math.sqrt(
@@ -398,17 +389,18 @@ function createAverChart(allrows) {
   var label;
     label = "+SD";
     handleNewDataSet(timeRes, upperCurv, label);
-    appendCSV(upperCurv, label);
+    //appendCSV(upperCurv, label);
     
-    label = "Aver";
+    label = "aver" + filenr;
     handleNewDataSet(timeRes, averTable, label);
-    appendCSV(averTable, label);
+    //appendCSV(averTable, label);
 
     label = "-SD";
     handleNewDataSet(timeRes, bottCurv, label);
-    appendCSV(bottCurv, label);
+    //appendCSV(bottCurv, label);
       
     // downloadCSV(stringres);
+    return averTable;
 }
 
 function downloadCSV(stringres) {
@@ -420,64 +412,121 @@ function downloadCSV(stringres) {
 }
 
 var rowData;
-
-function addOJIPpar() {   // working on the stringres
+var jipParTable = [];
+                          /////////////add ojip//////////////////////
+function addOJIPpar(ojipres, lab) {
   
-  stringres += '\n';
-  stringres += 'JIP_Param,';
-  stringres += parNames + '\n';
+  rowData = ojipres;
+  var parRow = getParam(rowData);                      // make parameter values table
+  var tempOJIP = [];
   
-  var rowsTab = stringres.split('\n');      // global stringres
-  var r = 1;                                // row 0 time
-  do {
-    var rowSpl = rowsTab[r].split(',');
-    var rowName = rowSpl[0];
-    var cond1 = rowName.localeCompare("+SD");
-    var cond2 = rowName.localeCompare("-SD");
-    
-    if (!(cond1 === 0) && !(cond2 === 0)) {
-      rowData = rowSpl.slice(1, rowSpl.length);
-      stringres += rowName + ',';
-      calcRow(rowData);                       // single row array of strings
+  for (n = 0; n < parRow.length; n++) {                                //rounding
+    var rname = calcP[n];
+    if (rname.localeCompare("Sm_tFm") == 0) {
+      tempOJIP.push(Math.round(10000 * parRow[n]) / 10000);
+    } else {
+      tempOJIP.push(Math.round(100 * parRow[n]) / 100);
     }
-    r++;
-  } while (rowsTab[r].length > 0);
+  }
+  jipParTable.push(tempOJIP);
   
-  //stringres += "\n" + Temp + Press + Hum;
+  getRadar(tempOJIP, 'a' + filenr);
+  //console.log('jipParTable', jipParTable);
 }
 
-function calcRow(rowData) {
-  var parObj = getParam(rowData);                      // make parameter table
-  const calcp = calcPar.split(',');
-  for (const name of calcp) {
-    var pval = parObj[name];
-  if (name.localeCompare("Sm_tFm") == 0) {
-    pval = Math.round(pval * 10000) / 10000;
+
+
+var referRow = [];
+var rownr = 0;
+
+function getRadar(radRes, lab) {                //
+  var chartRow = [];
+  //console.log('getradar');
+  for (posnr of parPosNr) {
+    chartRow.push(radRes[posnr]);
+  }
+  if (rownr == 0 && firstRadar == false) {
+    firstRadar = true;
+    referRow = chartRow;
+    chartRow = [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 
+                100, 100, 100, 100, 100, 100, 100, 100, 100, 100];
+    var mydataset = {
+      labels: paramSet,
+      datasets: [{
+        label: lab,
+        borderColor: colorpalette[rownr],
+        data: chartRow
+      }]
+    };
+    radarChart = new Chart(radarCanvas, {           /////new instance///////
+      type: 'radar',
+      data: mydataset,
+      options: {
+        plugins: {
+          customCanvasBackgroundColor: {
+            color: 'white'
+          }
+        },
+    
+    },
+      plugins: [{
+        id: 'customCanvasBackgroundColor',
+        beforeDraw: (chart, args, options) => {
+        const {
+          ctx
+        } = chart;
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-over';
+        ctx.fillStyle = options.color || '#99ffff';
+        ctx.fillRect(0, 0, chart.width, chart.height);
+        ctx.restore();
+        }
+      }],
+    });
+    rownr++;
   } else {
-    pval = Math.round(pval * 100) / 100;
+    
+    for (n = 0; n < chartRow.length; n++) {             //refering
+      chartRow[n] = 100 * chartRow[n] / referRow[n];
+    }
+    var updatset = {
+      label: lab,
+      borderColor: colorpalette[rownr],
+      data: chartRow
+    };
+    radarChart.data.datasets.push(updatset);
+    rownr++;
+    radarChart.update();
   }
-    var printName = nameTransl[name];
-    stringres += pval.toString() + ',';
-  }
-  stringres += '\n';
-}
+} 
 
 function getParam(rowData) {                   // translate param names and get formulas
-  const a = rowData;                            // a -> translation table !
+  const a = rowData;                            // a -> translation table name!
   var L = {};
-  for (i = 0; i < formP.length; i++) {    // global formP array fromPar string
-    var par = calcP[i];
-    L[par] = eval(formP[i]);
+  var vals = [];
+  
+  for (i = 0; i < formP.length; i++) {          // global formP array
+    var par = calcP[i];                          //calcP names of parameters for calculations
+    var val = eval(formP[i]);
+    
+    L[par] = val;
+    vals.push(val);
   }
-  return L;
+  return vals;
 }
 
 // courtesy V.Goltsev & M.Paunov
 
+//for radar chart
+const paramSet = ['Fo', 'Fm', 'Fv/Fm', 'Phi(Eo)', 'Phi(Ro)', 'Phi(Do)', 'DELTA(Ro)', 'Psi(Eo)', 'GAMMA(Rc)',
+          't(Fm)', 'Sm/t(Fm)', 'Mo', 'ABS/RC', 'TRo/RC(to)', 'DIo/RC(to)', 'RC/ABS', 
+          'Fv/Fm/(1-Fv/Fm)', 'Psi(Eo)/(1-Psi(Eo))',
+          'PI(ABS)', 'PI(total)']
+
 var parNames = "Fo,F50,F100,F300,Fj,Fi,Fm,V50,V300,Fv/Fm,Phi(Eo),Phi(Ro),Phi(Do),";
 parNames += "Vj,Vi,DELTA(Ro),Psi(Eo),S2,S3,S4,t(Fm),Mo,S1,Sm/t(Fm),Ss,";
 parNames += "ABS/RC,TRo/RC,TRo/RC(to),DIo/RC(to),RC/ABS,GAMMA(Rc),Fv/Fm/(1-Fv/Fm),";
-parNames += "Psi(Eo)/(1-Psi(Eo)),Pi(ABS),Pi(total),Kn,Kp,Piabs-2,Pitotal-2";
+parNames += "Psi(Eo)/(1-Psi(Eo)),PI(ABS),PI(total),Kn,Kp,Piabs-2,Pitotal-2";
 
 var parN = parNames.split(',');
 var nameTransl = {};
@@ -508,15 +557,14 @@ formPar += "L.Fo/L.Fm,(L.Fm-L.Fo)/L.Fm,L.S1 * L.S2 * L.S3,L.Piabs_2 * L.S4";    
 
 var formP = formPar.split(',');
 
-
 function amax() {
   return Math.max.apply(null, rowData);
 }
 
 function fmpos() {
-  const newrow = rowData.map(Number);
-  let i = newrow.indexOf(Math.max(...newrow));
-  return timeRes[i];
+  var maxx = Math.max(...rowData);
+  var i = rowData.indexOf(maxx);
+  return Math.floor(timeRes[i]);
 }
 function addAmb(allRows) {
   const ambDat = allRows.slice(-6);
@@ -524,7 +572,7 @@ function addAmb(allRows) {
   var press = ambDat[1];
   var hum = ambDat[2];
   
-  stringres += '\n' + temp + press + hum;
+  stringres += '\n' + temp + press + hum + '\n\n';
 }
 
 var timeToWait = 1000; 
@@ -537,14 +585,50 @@ function waitFunction() {
   aDownloadLink.click();
  }
  
- function sendResults(stringres) {
-
+function waitFunction1() {
+  const canvas = document.getElementById('radarChart');
+  const image = canvas.toDataURL();
+  var aDownloadLink = document.createElement('a');
+  aDownloadLink.download = 'oijpar.png';
+  aDownloadLink.href = image;
+  aDownloadLink.click();
+ }
+ 
+ 
+ function sendResults() {                    //Get results button handle
+   
+  stringres += '\nOJIParam,' + parN + ',\n';
+  for (n = 0; n < jipParTable.length; n++) {
+    stringres +=  'aver' + (n + 1) +',' + jipParTable[n] + '\n';
+  }
+  addAmb(allRows);
+  //console.log('stringres', stringres.split('\n'));
   downloadCSV(stringres);
   setTimeout(function(){ waitFunction(); }, timeToWait);
+  setTimeout(function(){ waitFunction1(); }, timeToWait);
 }
 
+var lastJIProw = 0;
 
+var radarCanvas = document.getElementById("radarChart").getContext('2d');
+firstRadar = false;
+
+                            // radar chart ///////////////
+var radarChart = null;
+
+function filterRow() {                    //filter radar row
+  var parSetNrs = [];
+  for (par of paramSet) {                       //intersted for radarChart
+    if (parN.indexOf(par) > -1) {
+      var pos = parN.indexOf(par);              //all param list
+      parSetNrs.push(pos);
+    }
+  }
+  return parSetNrs;
+}
+
+const parPosNr = filterRow();
+//console.log(parPosNr);
+  
 </script>
 </html>
-
-
