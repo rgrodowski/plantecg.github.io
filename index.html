@@ -1,3 +1,4 @@
+
 <!DOCTYPE html> <html>
 <head>
   <meta charset="UTF-8">
@@ -222,9 +223,13 @@ function tryStartProcessFiles(expectedSize) {
   }
   fnr = nrFiles;
 }
+
 var allRows = [];
 var filenr = 0;                     //uploaded files nr
-                                    ///////handleData/////////////
+var was2Rows = false;
+                                   ///////handleData/////////////
+
+
 function handleData(file) {
   filenr++;
   allRows = file.split("\n");
@@ -236,51 +241,104 @@ function handleData(file) {
   }  
   var handleRows = readRows(allRows);             // extract data rows 
   const nrRows = handleRows.length;
-  
-  if (filenr == 1) {                            // first row time
-    appendCSV(timeRes, "time");
-  } 
-  if (nrRows == 2) {
-    handleNewDataSet(timeRes, handleRows[1], "aver1");   //label
-    appendCSV(handleRows[1], "aver1");
-    addOJIPpar(handleRows[1], "aver1");
+  if (filenr == 1) {                              //first reference file
+    appendCSV(timeRes, "time");    
+
+  if (nrRows == 2) {                            // 1 time and 1 data rows
+    handleNewDataSet(timeRes, handleRows[1], "aver");   //label
+    appendCSV(handleRows[1], "aver");
+    addOJIPpar(handleRows[1], "aver");
     e.style.display = 'block';            //show 'Get results' button
   } 
-    if (nrRows > 2) {
-      
-      if (filenr == 1) {
-        for (nrr = 1; nrr < nrRows; nrr++) {
-          handleNewDataSet(timeRes, handleRows[nrr], 'res' + nrr);   //label
-        }
-        createAverChart(handleRows);
-      }
-      if (filenr == 2) {
-        filterChart('aver1', true);               // true - return chart with aver
-        myChart.data.datasets[0].backgroundColor = ['green'];
-        measNr = 1;
-      }
-      var avRes = getAver(handleRows);
-      appendCSV(avRes, "aver" + filenr);
-      
-      if (filenr != 1){
-        handleNewDataSet(timeRes, avRes, 'a' + filenr);   //label
-      }
 
-      e.style.display = 'block';            //show 'Get results' button
-      addOJIPpar(avRes, 'a' + filenr);
-    }  
-    //console.log('stringres', stringres.split('\n'));
+  if (nrRows > 2) {
+    for (nrr = 1; nrr < nrRows; nrr++) {
+      handleNewDataSet(timeRes, handleRows[nrr], 'res' + nrr);   //label
+    }
+    var rAv = createAverChart(handleRows);
+    appendCSV(rAv, "aver" + (filenr));
+    addOJIPpar(rAv, "aver" + (filenr - 1));
+    }
+  } else {                                  //filenr > 1
+    if (filenr == 2) {
+      filterChart('aver');
+      myChart.data.datasets[0].backgroundColor = ['green'];
+      measNr = 1;
+    }
+    var avRes
+    if (nrRows > 2) {
+      avRes = getAver(handleRows);
+    } else {                                // there is row  no average 
+      avRes = handleRows[1];
+    }
+    appendCSV(avRes, "aver" + (filenr));
+      
+    handleNewDataSet(timeRes, avRes, 'a' + filenr);   //label
+  
+    e.style.display = 'block';            //show 'Get results' button
+    addOJIPpar(avRes, 'a' + filenr);
+  }
+  console.log(stringres.split('\n'));
 }
 
-includ = true;
 
-function filterChart(targetLabel, includ) {
-  myChart.data.datasets = myChart.data.datasets.filter(function(obj) {
-    if (includ == true){
-      return (obj.label == targetLabel); 
-    } else {
-      return (obj.label != targetLabel); 
+function handleDataOld(file) {
+  filenr++;
+  allRows = file.split("\n");
+  timeRes = allRows[0].split(',');
+  if (timeRes[0] != 0.01 && timeRes.length != 119) {
+    alert("Wrong file format");
+    location.reload();
+    return;             
+  }  
+  var handleRows = readRows(allRows);             // extract data rows 
+  const nrRows = handleRows.length;
+  if (filenr == 1) {
+    appendCSV(timeRes, "time");               //first row of first file
+  }
+  console.log('nrRows', nrRows);
+   
+  if (nrRows == 2) {                            // 1 time and 1 data rows
+    handleNewDataSet(timeRes, handleRows[1], "aver");   //label
+    appendCSV(handleRows[1], "aver");
+    addOJIPpar(handleRows[1], "aver");
+    e.style.display = 'block';            //show 'Get results' button
+  } 
+  
+  if (was2Rows == true) {
+    filterChart('aver');               // true - return chart with aver
+    was2Rows = false;
+  }
+  if (nrRows > 2) {
+      
+  if (filenr == 1) {
+    for (nrr = 1; nrr < nrRows; nrr++) {
+      handleNewDataSet(timeRes, handleRows[nrr], 'res' + nrr);   //label
     }
+    createAverChart(handleRows);
+  }
+  if (filenr == 2) {
+    myChart.data.datasets[0].backgroundColor = ['green'];
+    measNr = 1;
+  }
+  var avRes = getAver(handleRows);
+  appendCSV(avRes, "aver" + filenr);
+      
+  if (filenr != 1){
+    handleNewDataSet(timeRes, avRes, 'a' + filenr);   //label
+  }
+
+  e.style.display = 'block';            //show 'Get results' button
+  addOJIPpar(avRes, 'a' + filenr);
+  }
+  if (nrRows == 2) {
+    was2Rows = true;
+  }
+}
+
+function filterChart(targetLabel) {
+  myChart.data.datasets = myChart.data.datasets.filter(function(obj) {
+      return (obj.label == targetLabel); 
   });
   myChart.update(); 
 }
@@ -391,7 +449,7 @@ function createAverChart(allrows) {
     handleNewDataSet(timeRes, upperCurv, label);
     //appendCSV(upperCurv, label);
     
-    label = "aver" + filenr;
+    label = "aver";
     handleNewDataSet(timeRes, averTable, label);
     //appendCSV(averTable, label);
 
@@ -632,3 +690,5 @@ const parPosNr = filterRow();
   
 </script>
 </html>
+
+
