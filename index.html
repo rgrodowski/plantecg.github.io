@@ -258,6 +258,7 @@ function handleData(file) {
     var rAv = createAverChart(handleRows);
     appendCSV(rAv, "aver" + (filenr));
     addOJIPpar(rAv, "aver" + (filenr - 1));
+    e.style.display = 'block';            //show 'Get results' button
     }
   } else {                                  //filenr > 1
     if (filenr == 2) {
