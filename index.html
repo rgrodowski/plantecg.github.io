@@ -4,56 +4,16 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Chlorophyll Fluorescence</title>
-  
-  <style>
-    html { font-family: Helvetica;
-      display: inline-block;
-      margin: 0px auto; 
-      text-align: center;}
-      
-    body{margin-top: 10px;} 
-    h3 {color: #444444;margin-bottom: 50px;}
-    
-    #chartbox {
-      display: block;
-      width: 600px;
-    }
-    label[for="file-input"] {
-      padding: 12px 24px;
-      font-size: 16px;
-      background-color: #4CAF50;
-      color: white;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: background-color 0.3s;
-    }
-
-    label[for="file-input"]:hover {
-      background-color: #45a049;
-    }
-
-    #download-chart {
-      padding: 12px 24px;
-      font-size: 16px;
-      background-color: #2196F3;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: background-color 0.3s;
-    }
-
-    #download-chart:hover {
-      background-color: #0b7dda;
-    }
-    
-    
-  </style>
-  
+  <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   </head>
   <body>
+    <nav>
+      <a href="index.html">Analyzer</a>
+      <a href="device-guide.html">Device Guide</a>
+      <a href="about.html">About</a>
+    </nav>
     <h3>PlantECG fluorymeter data processing</h3>
     
   <div style="width:600px; margin:0 auto; margin-bottom: 20px; id="chartbox">
