@@ -14,8 +14,8 @@ nav {
   gap: 30px;
   position: sticky;
   top: 0;
-  max-width: 900px;
-  box-sizing: border-box;
+  /*max-width: 900px;
+  box-sizing: border-box;*/
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
