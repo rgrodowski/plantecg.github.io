@@ -32,6 +32,32 @@ nav a:hover {
   background-color: #34495e;
 }
 
+.lang-selector {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  padding-right: 15px;
+}
+
+.lang-selector select {
+  background-color: #34495e;
+  color: white;
+  border: 1px solid #4a6278;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  outline: none;
+}
+
+.lang-selector select:hover {
+  background-color: #4a6278;
+}
+
+.lang-selector select:focus {
+  border-color: #4CAF50;
+}
+
 body {
   margin-top: 0px;
   max-width: 900px;

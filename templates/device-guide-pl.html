@@ -1,0 +1,164 @@
+<h1>Opis urządzenia PlantECG</h1>
+
+<div class="section">
+  <h2>Funkcja</h2>
+  <p>PlantECG jest przenośnym, nieinwazyjnym przyrządem do pomiaru fluorescencji chlorofilu. Analizując odpowiedź fluorescencyjną chlorofilu na impulsy świetlne, umożliwia szybką ocenę stanu fizjologicznego roślin oraz wykrywanie oznak stresu.</p>
+</div>
+
+<div class="section">
+  <h2>Specyfikacja techniczna</h2>
+  <ul>
+    <li><strong>Typ pomiaru:</strong> Nieinwazyjny, kontaktowy</li>
+    <li><strong>Czas pomiaru:</strong> 1 sekunda (rejestracja krzywej szybkiej indukcji fluorescencji chlorofilu OJIP)</li>
+    <li><strong>Źródło światła wzbudzającego:</strong> Niebieska dioda LED (430 nm)</li>
+    <li><strong>Natężenie światła wzbudzającego (oświetlacz):</strong> około 4000 µmol fotonów/m²/s</li>
+    <li><strong>Analizowany sygnał:</strong> Aktywność fotosystemu II (PSII) w chloroplastach</li>
+    <li><strong>Tryby pracy:</strong> Pojedynczy pomiar lub seria pomiarów</li>
+    <li><strong>Mobilność:</strong> Kompaktowa i lekka konstrukcja umożliwiająca pracę w terenie oraz w laboratorium</li>
+    <li><strong>Komunikacja:</strong> Bezprzewodowe połączenie z komputerem, smartfonem, tabletem lub innymi urządzeniami przez WiFi (punkt dostępu WiFi: 2.4 GHz)</li>
+    <li><strong>Wymiary:</strong> 95 × 58 × 23 mm</li>
+    <li><strong>Masa:</strong> 80 g</li>
+    <li><strong>Detektor:</strong> Fotodioda PIN z filtrem pasmowo-przepustowym 690 nm</li>
+    <li><strong>Elektronika:</strong> Kontroler 32-bitowy, przetwornik ADC 12-bitowy</li>
+    <li><strong>Bateria:</strong> Litowo-polimerowa 3.7 V, 1200 mAh</li>
+    <li><strong>Ładowanie:</strong> USB Type-C</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h2>Elementy fluorymetru</h2>
+  <p>Urządzenie składa się z następujących elementów:</p>
+  <ol>
+    <li>Przełącznik zasilania</li>
+    <li>Głowica pomiarowa</li>
+    <li>Przycisk pomiarowy</li>
+    <li>Wyświetlacz</li>
+    <li>Wskaźnik stanu fizjologicznego rośliny</li>
+    <li>Port ładowania USB-C</li>
+    <li>Bateria i wskaźnik ładowania</li>
+  </ol>
+</div>
+
+<div class="section">
+  <h2>Rozpoczęcie pracy</h2>
+  <h3>Wymagane elementy</h3>
+  <ul>
+    <li>Fluorymetr PlantECG (urządzenie główne)</li>
+    <li>Komputer, tablet lub smartfon z przeglądarką internetową, umożliwiający połączenie z lokalną siecią WiFi generowaną przez fluorymetr (SSID: FLUO + dwie ostatnie cyfry identyfikatora urządzenia, adres IP: 192.168.35.1, hasło: przypisywane indywidualnie do egzemplarza)</li>
+    <li>Próbki roślin przeznaczone do pomiarów</li>
+    <li>Komora do adaptacji w ciemności lub materiał zaciemniający (zalecane)</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h2>Procedura pomiarowa</h2>
+
+  <h3>Krok 1: Adaptacja do ciemności</h3>
+  <p>Aby uzyskać optymalne wyniki, przed pomiarem należy przeprowadzić adaptację liścia do ciemności przez 20–30 minut. Adaptacja do ciemności przywraca fotosystemy do stanu początkowego i zwiększa wiarygodność sygnału fluorescencji. Można użyć komory adaptacyjnej lub osłonić powierzchnię liścia materiałem nieprzepuszczającym światła.</p>
+
+  <h3>Krok 2: Pozycjonowanie względem liścia</h3>
+  <p>Ostrożnie zbliż głowicę pomiarową do powierzchni liścia i zapewnij delikatny, stabilny kontakt. Należy unikać nadmiernej siły, która mogłaby uszkodzić tkanki rośliny.</p>
+
+  <h3>Krok 3: Wykonanie pomiaru</h3>
+  <p>Naciśnij przycisk pomiarowy raz, aby rozpocząć pomiar. Urządzenie wyemituje impuls świetlny i automatycznie zarejestruje odpowiedź fluorescencyjną. Pomiar trwa około 1 sekundy. W tym czasie nie należy poruszać głowicy pomiarowej ani liścia. Podstawowe wyniki pomiaru można sprawdzić na wyświetlaczu.</p>
+
+  <h3>Krok 4: Zatrzymanie krzywej na wykresie</h3>
+  <p>Jeżeli wyświetlony na urządzeniu wykres zostanie uznany za poprawny, należy dwukrotnie nacisnąć przycisk pomiarowy, aby zachować go na wykresie.</p>
+
+  <h3>Krok 5: Zakończenie serii pomiarów</h3>
+  <p>Po zapisaniu ostatniej krzywej (dwukrotne naciśnięcie przycisku pomiarowego), kolejne dwa naciśnięcia spowodują ukrycie zapisanych krzywych oraz wyświetlenie ich wartości średniej wraz z zakresem zmienności (± jedno odchylenie standardowe). Następnie dane pomiarowe zostaną zapisane w pliku ojip.csv w pamięci nieulotnej podłączonego urządzenia przez sieci WiFi.</p>
+</div>
+
+<div class="section">
+  <h2>Zasada pomiaru i parametry</h2>
+
+  <h3>Krzywa OJIP</h3>
+  <p>Urządzenie rejestruje krzywą indukcji fluorescencji O-J-I-P, analizując odpowiedź fotosyntetyczną w przedziale czasowym od mikrosekund do milisekund:</p>
+  <ul>
+    <li><strong>O (Origin):</strong> Fluorescencja początkowa, gdy wszystkie centra reakcyjne są otwarte</li>
+    <li><strong>J (Jump):</strong> Faza szybkiego wzrostu (1–2 ms)</li>
+    <li><strong>I (Intermediate):</strong> Wolniejsza faza wzrostu (30 ms)</li>
+    <li><strong>P (Peak):</strong> Maksymalna fluorescencja, gdy wszystkie centra reakcyjne są zamknięte</li>
+  </ul>
+
+  <h3>Podstawowe parametry</h3>
+  <ul>
+    <li><strong>Fo:</strong> Minimalna intensywność fluorescencji (wartość odniesienia)</li>
+    <li><strong>Fm:</strong> Maksymalna intensywność fluorescencji</li>
+    <li><strong>Fv/Fm:</strong> Maksymalna wydajność kwantowa, typowo w zakresie 0,75–0,85 dla zdrowych roślin, zdefiniowana jako (Fm − Fo) / Fm</li>
+    <li><strong>PI(ABS):</strong> Wskaźnik wydajności (Performance Index) określający efektywność reakcji fotochemicznych</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h2>Analiza wyników pomiarów</h2>
+  <p>Zarejestrowane krzywe indukcji fluorescencji (118 punktów) zapisywane są w formacie CSV. Pliki te można zaimportować do <a href="index.html">Analizatora PlantECG</a> w celu obliczenia parametrów oraz wizualizacji wyników.</p>
+
+  <div class="highlight">
+    <p><strong>Format pliku CSV:</strong> Pierwszy wiersz pliku zawiera wartości czasu (w milisekundach), a kolejne wiersze – wartości intensywności fluorescencji. W jednym pliku może zostać zapisanych wiele wyników pomiarów.</p>
+    <p>Na końcu pliku zapisywane są dane środowiskowe z momentu pomiaru: temperatura, ciśnienie atmosferyczne oraz wilgotność względna.</p>
+    <p><strong>Narzędzie analityczne:</strong> Plik ojip.csv zapisany podczas pomiarów można otworzyć w arkuszu kalkulacyjnym lub przesłać do aplikacji plantecg.pl, gdzie dedykowane oprogramowanie automatycznie oblicza około 40 parametrów fizjologicznych na podstawie analizy OJIP oraz generuje plik wynikowy ojipres.csv.</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Zalecenia</h2>
+  <ul>
+    <li><strong>Spójność pomiarów:</strong> Ze względu na fotoadaptację wywoływaną światłem indukującym fluorescencję, kolejne pomiary tej samej rośliny należy wykonywać w różnych miejscach liścia.</li>
+    <li><strong>Pora dnia:</strong> W badaniach porównawczych pomiary należy wykonywać o tej samej porze dnia.</li>
+    <li><strong>Powtórzenia:</strong> Zwiększenie liczby pomiarów na różnych liściach poprawia wiarygodność statystyczną wyników.</li>
+    <li><strong>Liczba pomiarów:</strong> Dla uzyskania wiarygodnych rezultatów zaleca się wykonanie co najmniej 3–5 pomiarów dla każdego wariantu.</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h2>Obsługa urządzenia</h2>
+  <ul>
+    <li><strong>Przygotowanie:</strong> Fluorymetr jest urządzeniem zasilanym bateryjnie. Przed użyciem należy w pełni naładować baterię przez port USB-C. Aby uzyskać dostęp do wszystkich funkcji, należy połączyć się z siecią WiFi generowaną przez urządzenie (SSID: FLUO + dwie ostatnie cyfry identyfikatora).</li>
+    <li><strong>Sterowanie zasilaniem:</strong> Zasilanie włącza się za pomocą suwakowego przełącznika na boku obudowy. Przełączenie w stronę głowicy pomiarowej powoduje odłączenie baterii od układu. W tym trybie możliwa jest praca z zewnętrznym zasilaniem, jednak nie jest ona zalecana do pomiarów mobilnych ani ciągłych. Przełączenie w stronę wyświetlacza podłącza baterię do układu i umożliwia wykonanie kilkuset pomiarów na jednym ładowaniu.</li>
+    <li><strong>Wskaźnik ładowania:</strong> Przy niskim poziomie baterii po podłączeniu kabla wskaźnik miga, sygnalizując ładowanie. Po osiągnięciu wystarczającego poziomu naładowania dioda zapala się przez 30 sekund, a następnie gaśnie.</li>
+    <li><strong>Wskaźnik stanu fizjologicznego rośliny:</strong> Wyniki pomiarów wyświetlane są na ekranie. Dioda sygnalizacyjna wskazuje stan fizjologiczny rośliny: zielony – stan dobry, żółty – stan ostrzegawczy, czerwony – silny stres.</li>
+    <li><strong>Wykonywanie pomiaru:</strong> Krótkie naciśnięcie przycisku pomiarowego uruchamia pomiar. Jeżeli wynik jest poprawny, dwukrotne naciśnięcie przycisku zapisuje krzywą na wykresie. Operację można powtarzać, aby zapisać wiele krzywych. Zakończenie serii pomiarów następuje po kolejnych dwóch naciśnięciach przycisku.</li>
+    <li><strong>Zapis wyników:</strong> Po zakończeniu serii pomiarów plik o nazwie ojip.csv zostaje automatycznie zapisany na podłączonym urządzeniu przez sieci WiFi.</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h2>Rozwiązywanie problemów</h2>
+
+  <h3>Słaby lub niestabilny sygnał</h3>
+  <p>Jeżeli wartości pomiarowe są niższe od oczekiwanych lub niestabilne, sprawdź:</p>
+  <ul>
+    <li>czy głowica pomiarowa prawidłowo przylega do powierzchni liścia</li>
+    <li>czy powierzchnia liścia jest czysta</li>
+    <li>czy adaptacja do ciemności była wystarczająca</li>
+    <li>czy poziom naładowania baterii jest odpowiedni</li>
+  </ul>
+
+  <h3>Urządzenie nie reaguje</h3>
+  <ul>
+    <li>naładuj urządzenie przez kilka godzin</li>
+    <li>przełącz zasilanie, aby zrestartować urządzenie</li>
+    <li>w przypadku utrzymywania się problemu skontaktuj się z pomocą techniczną</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h2>Bezpieczeństwo i konserwacja</h2>
+  <ul>
+    <li><strong>Ekspozycja na światło:</strong> Urządzenie emituje impulsy światła o dużym natężeniu. Nie kieruj głowicy pomiarowej w stronę oczu.</li>
+    <li><strong>Czyszczenie:</strong> Głowicę pomiarową czyść miękką, suchą ściereczką. Nie stosuj agresywnych rozpuszczalników ani materiałów ściernych.</li>
+    <li><strong>Przechowywanie:</strong> Przechowuj urządzenie w suchym i chłodnym miejscu, z dala od bezpośredniego światła słonecznego.</li>
+    <li><strong>Bateria:</strong> Regularnie ładuj baterię, a w przypadku znacznego spadku jej wydajności skontaktuj się z serwisem.</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h2>Kontakt i wsparcie</h2>
+  <p>W przypadku pytań dotyczących pomiarów, obsługi urządzenia lub wsparcia technicznego skontaktuj się z producentem lub autoryzowanym dystrybutorem. Dodatkowe informacje oraz noty aplikacyjne dostępne są na stronie plantecg.pl.</p>
+</div>
+
+<div class="footer">
+  <p>Instrukcja obsługi</p>
+  <p><a href="index.html">Analizator</a></p>
+</div>
