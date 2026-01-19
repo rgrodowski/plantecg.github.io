@@ -11,9 +11,9 @@ const i18n = {
 
   // Navigation translations
   nav: {
-    en: { analyzer: "Analyzer", deviceGuide: "Device Guide", about: "About" },
-    pl: { analyzer: "Pomiary", deviceGuide: "Opis urządzenia", about: "Opis" },
-    ja: { analyzer: "分析ツール", deviceGuide: "使用ガイド", about: "概要" }
+    en: { analyzer: "Analyzer", deviceGuide: "Device Guide", about: "About", press: "Press" },
+    pl: { analyzer: "Pomiary", deviceGuide: "Opis urządzenia", about: "Opis", press: "Prasa" },
+    ja: { analyzer: "分析ツール", deviceGuide: "使用ガイド", about: "概要", press: "プレス" }
   },
 
   // Index page UI elements
@@ -41,6 +41,7 @@ const i18n = {
     const path = window.location.pathname;
     if (path.includes('device-guide')) return 'device-guide';
     if (path.includes('about')) return 'about';
+    if (path.includes('press')) return 'press';
     return 'index';
   },
 
@@ -77,6 +78,7 @@ const i18n = {
       if (href.includes('index')) link.textContent = nav.analyzer;
       else if (href.includes('device-guide')) link.textContent = nav.deviceGuide;
       else if (href.includes('about')) link.textContent = nav.about;
+      else if (href.includes('press')) link.textContent = nav.press;
     });
   },
 
