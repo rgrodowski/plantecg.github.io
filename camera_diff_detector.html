@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detektor Różnic - Kamera</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            background: #1a1a1a;
+            color: #fff;
+            padding: 20px;
+            touch-action: manipulation;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+        
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.3s;
+            touch-action: manipulation;
+        }
+        
+        button:hover {
+            background: #45a049;
+        }
+        
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        
+        button.secondary {
+            background: #2196F3;
+        }
+        
+        button.secondary:hover {
+            background: #0b7dda;
+        }
+        
+        button.danger {
+            background: #f44336;
+        }
+        
+        button.danger:hover {
+            background: #da190b;
+        }
+        
+        .status {
+            background: #333;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 16px;
+        }
+        
+        .status.success {
+            background: #2e7d32;
+        }
+        
+        .status.info {
+            background: #1565c0;
+        }
+        
+        .camera-container {
+            display: none;
+            margin: 20px 0;
+            position: relative;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .camera-container.active {
+            display: block;
+        }
+        
+        video {
+            width: 100%;
+            height: auto;
+            display: block;
+            background: #000;
+        }
+        
+        .canvas-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .canvas-item {
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        
+        .canvas-item h3 {
+            margin-bottom: 10px;
+            font-size: 16px;
+            color: #4CAF50;
+        }
+        
+        canvas {
+            width: 100%;
+            height: auto;
+            border: 2px solid #444;
+            border-radius: 4px;
+            display: block;
+        }
+        
+        .info {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #aaa;
+        }
+        
+        .maxima-info {
+            background: #1565c0;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📸 Detektor Różnic - Analiza Obrazu</h1>
+        
+        <div class="controls">
+            <button id="startCamera">🎥 Uruchom Kamerę</button>
+            <button id="captureBtn" disabled>📷 Zrób Zdjęcie</button>
+            <button id="processBtn" class="secondary" disabled>🔬 Przetwórz Obrazy</button>
+            <button id="resetBtn" class="danger">🔄 Reset</button>
+        </div>
+        
+        <div id="status" class="status">Gotowy do uruchomienia kamery</div>
+        
+        <div id="cameraContainer" class="camera-container">
+            <video id="video" autoplay playsinline></video>
+        </div>
+        
+        <div class="canvas-grid">
+            <div class="canvas-item">
+                <h3>Zdjęcie 1</h3>
+                <canvas id="canvas1"></canvas>
+                <div class="info" id="info1">Brak zdjęcia</div>
+            </div>
+            
+            <div class="canvas-item">
+                <h3>Zdjęcie 2</h3>
+                <canvas id="canvas2"></canvas>
+                <div class="info" id="info2">Brak zdjęcia</div>
+            </div>
+            
+            <div class="canvas-item">
+                <h3>Różnica (Odejmowanie)</h3>
+                <canvas id="canvasDiff"></canvas>
+                <div class="info" id="infoDiff">Oczekiwanie na przetworzenie</div>
+            </div>
+            
+            <div class="canvas-item">
+                <h3>Mean Filter 5x5</h3>
+                <canvas id="canvasMean"></canvas>
+                <div class="info" id="infoMean">Oczekiwanie na przetworzenie</div>
+            </div>
+            
+            <div class="canvas-item">
+                <h3>Lokalne Maksima (30x30)</h3>
+                <canvas id="canvasMaxima"></canvas>
+                <div class="info" id="infoMaxima">Oczekiwanie na przetworzenie</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+      
+      
+      navigator.mediaDevices.enumerateDevices()
+  .then(function(devices) {
+    console.log('devices: ', devices);
+  })
+  .catch(function(err) {
+    console.log(err.name + ": " + err.message);
+  });
+        let stream = null;
+        let imageCount = 0;
+        let imageData1 = null;
+        let imageData2 = null;
+        
+        const video = document.getElementById('video');
+        const startCameraBtn = document.getElementById('startCamera');
+        const captureBtn = document.getElementById('captureBtn');
+        const processBtn = document.getElementById('processBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const status = document.getElementById('status');
+        const cameraContainer = document.getElementById('cameraContainer');
+        
+        const canvas1 = document.getElementById('canvas1');
+        const canvas2 = document.getElementById('canvas2');
+        const canvasDiff = document.getElementById('canvasDiff');
+        const canvasMean = document.getElementById('canvasMean');
+        const canvasMaxima = document.getElementById('canvasMaxima');
+        
+        const ctx1 = canvas1.getContext('2d');
+        const ctx2 = canvas2.getContext('2d');
+        const ctxDiff = canvasDiff.getContext('2d');
+        const ctxMean = canvasMean.getContext('2d');
+        const ctxMaxima = canvasMaxima.getContext('2d');
+        
+        // Uruchomienie kamery
+        startCameraBtn.addEventListener('click', async () => {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'environment',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
+                });
+                
+                video.srcObject = stream;
+                cameraContainer.classList.add('active');
+                captureBtn.disabled = false;
+                startCameraBtn.disabled = true;
+                updateStatus('Kamera uruchomiona', 'success');
+            } catch (err) {
+                updateStatus('Błąd dostępu do kamery: ' + err.message, 'error');
+            }
+        });
+        
+        // Przechwycenie zdjęcia
+        captureBtn.addEventListener('click', () => {
+            const targetCanvas = imageCount === 0 ? canvas1 : canvas2;
+            const targetCtx = imageCount === 0 ? ctx1 : ctx2;
+            const targetInfo = imageCount === 0 ? 'info1' : 'info2';
+            
+            // Ustaw rozmiar canvas
+            targetCanvas.width = video.videoWidth;
+            targetCanvas.height = video.videoHeight;
+            
+            // Rysuj obraz z video
+            targetCtx.drawImage(video, 0, 0);
+            
+            // Zapisz imageData
+            if (imageCount === 0) {
+                imageData1 = targetCtx.getImageData(0, 0, targetCanvas.width, targetCanvas.height);
+                document.getElementById(targetInfo).textContent = 
+                    `Rozdzielczość: ${targetCanvas.width}x${targetCanvas.height}`;
+                imageCount++;
+                updateStatus('Zdjęcie 1 zapisane. Zrób drugie zdjęcie.', 'info');
+            } else {
+                imageData2 = targetCtx.getImageData(0, 0, targetCanvas.width, targetCanvas.height);
+                document.getElementById(targetInfo).textContent = 
+                    `Rozdzielczość: ${targetCanvas.width}x${targetCanvas.height}`;
+                imageCount++;
+                processBtn.disabled = false;
+                captureBtn.disabled = true;
+                updateStatus('Oba zdjęcia zapisane. Możesz rozpocząć przetwarzanie.', 'success');
+            }
+        });
+        
+        // Przetwarzanie obrazów
+        processBtn.addEventListener('click', () => {
+            updateStatus('Przetwarzanie... Proszę czekać.', 'info');
+            
+            // Użyj setTimeout aby UI mógł się odświeżyć
+            setTimeout(() => {
+                processImages();
+            }, 100);
+        });
+        
+        function processImages() {
+            if (!imageData1 || !imageData2) {
+                updateStatus('Brak dwóch zdjęć do przetworzenia', 'error');
+                return;
+            }
+            
+            // Sprawdź czy obrazy mają te same wymiary
+            if (imageData1.width !== imageData2.width || imageData1.height !== imageData2.height) {
+                updateStatus('Zdjęcia muszą mieć te same wymiary!', 'error');
+                return;
+            }
+            
+            const width = imageData1.width;
+            const height = imageData1.height;
+            
+            // 1. Odejmowanie obrazów
+            const diffData = subtractImages(imageData1, imageData2);
+            canvasDiff.width = width;
+            canvasDiff.height = height;
+            ctxDiff.putImageData(diffData, 0, 0);
+            document.getElementById('infoDiff').textContent = 'Różnica obliczona';
+            
+            // 2. Mean filter 5x5
+            const meanData = meanFilter(diffData, 5);
+            canvasMean.width = width;
+            canvasMean.height = height;
+            ctxMean.putImageData(meanData, 0, 0);
+            document.getElementById('infoMean').textContent = 'Filtr średniej 5x5 zastosowany';
+            
+            // 3. Znajdź lokalne maksima 30x30
+            const maximaResult = findLocalMaxima(meanData, 30);
+            canvasMaxima.width = width;
+            canvasMaxima.height = height;
+            ctxMaxima.putImageData(maximaResult.imageData, 0, 0);
+            
+            // Narysuj numery maksimów
+            drawMaximaNumbers(ctxMaxima, maximaResult.maxima);
+            
+            document.getElementById('infoMaxima').innerHTML = 
+                `<div class="maxima-info">Znaleziono <strong>${maximaResult.maxima.length}</strong> lokalnych maksimów</div>`;
+            
+            updateStatus(`Przetwarzanie zakończone! Znaleziono ${maximaResult.maxima.length} lokalnych maksimów.`, 'success');
+        }
+        
+        // Odejmowanie obrazów
+        function subtractImages(img1, img2) {
+            const result = new ImageData(img1.width, img1.height);
+            const data1 = img1.data;
+            const data2 = img2.data;
+            const resultData = result.data;
+            
+            for (let i = 0; i < data1.length; i += 4) {
+                // Oblicz różnicę dla każdego kanału
+                const r = Math.abs(data1[i] - data2[i]);
+                const g = Math.abs(data1[i + 1] - data2[i + 1]);
+                const b = Math.abs(data1[i + 2] - data2[i + 2]);
+                
+                // Zapisz wynik
+                resultData[i] = r;
+                resultData[i + 1] = g;
+                resultData[i + 2] = b;
+                resultData[i + 3] = 255; // Alpha
+            }
+            
+            return result;
+        }
+        
+        // Mean filter
+        function meanFilter(imageData, kernelSize) {
+            const width = imageData.width;
+            const height = imageData.height;
+            const src = imageData.data;
+            const result = new ImageData(width, height);
+            const dst = result.data;
+            
+            const half = Math.floor(kernelSize / 2);
+            
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    let sumR = 0, sumG = 0, sumB = 0, count = 0;
+                    
+                    // Iteruj po kernelu
+                    for (let ky = -half; ky <= half; ky++) {
+                        for (let kx = -half; kx <= half; kx++) {
+                            const px = x + kx;
+                            const py = y + ky;
+                            
+                            // Sprawdź granice
+                            if (px >= 0 && px < width && py >= 0 && py < height) {
+                                const idx = (py * width + px) * 4;
+                                sumR += src[idx];
+                                sumG += src[idx + 1];
+                                sumB += src[idx + 2];
+                                count++;
+                            }
+                        }
+                    }
+                    
+                    const idx = (y * width + x) * 4;
+                    dst[idx] = sumR / count;
+                    dst[idx + 1] = sumG / count;
+                    dst[idx + 2] = sumB / count;
+                    dst[idx + 3] = 255;
+                }
+            }
+            
+            return result;
+        }
+        
+        // Znajdź lokalne maksima
+        function findLocalMaxima(imageData, kernelSize) {
+            const width = imageData.width;
+            const height = imageData.height;
+            const src = imageData.data;
+            const result = new ImageData(width, height);
+            const dst = result.data;
+            
+            // Skopiuj oryginalny obraz
+            for (let i = 0; i < src.length; i++) {
+                dst[i] = src[i];
+            }
+            
+            const half = Math.floor(kernelSize / 2);
+            const maxima = [];
+            
+            // Konwersja do skali szarości dla łatwiejszego porównania
+            const grayscale = new Array(width * height);
+            for (let i = 0; i < src.length; i += 4) {
+                const gray = 0.299 * src[i] + 0.587 * src[i + 1] + 0.114 * src[i + 2];
+                grayscale[i / 4] = gray;
+            }
+            
+            for (let y = half; y < height - half; y++) {
+                for (let x = half; x < width - half; x++) {
+                    const centerIdx = y * width + x;
+                    const centerValue = grayscale[centerIdx];
+                    
+                    // Pomiń wartości zbyt niskie (szum)
+                    if (centerValue < 30) continue;
+                    
+                    let isMaximum = true;
+                    
+                    // Sprawdź czy to lokalne maximum
+                    for (let ky = -half; ky <= half; ky++) {
+                        for (let kx = -half; kx <= half; kx++) {
+                            if (kx === 0 && ky === 0) continue;
+                            
+                            const px = x + kx;
+                            const py = y + ky;
+                            const idx = py * width + px;
+                            
+                            if (grayscale[idx] > centerValue) {
+                                isMaximum = false;
+                                break;
+                            }
+                        }
+                        if (!isMaximum) break;
+                    }
+                    
+                    if (isMaximum) {
+                        maxima.push({ x, y, value: centerValue });
+                    }
+                }
+            }
+            
+            return { imageData: result, maxima };
+        }
+        
+        // Rysuj numery przy maksimach
+        function drawMaximaNumbers(ctx, maxima) {
+            ctx.fillStyle = 'red';
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 3;
+            ctx.font = 'bold 24px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            maxima.forEach((max, index) => {
+                const number = (index + 1).toString();
+                
+                // Rysuj kółko
+                ctx.beginPath();
+                ctx.arc(max.x, max.y, 20, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 0, 0, 0.7)';
+                ctx.fill();
+                ctx.strokeStyle = 'white';
+                ctx.stroke();
+                
+                // Rysuj numer
+                ctx.strokeText(number, max.x, max.y);
+                ctx.fillStyle = 'white';
+                ctx.fillText(number, max.x, max.y);
+            });
+        }
+        
+        // Reset
+        resetBtn.addEventListener('click', () => {
+            // Zatrzymaj kamerę
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            
+            // Reset UI
+            cameraContainer.classList.remove('active');
+            startCameraBtn.disabled = false;
+            captureBtn.disabled = true;
+            processBtn.disabled = true;
+            
+            // Reset danych
+            imageCount = 0;
+            imageData1 = null;
+            imageData2 = null;
+            
+            // Wyczyść canvas
+            [ctx1, ctx2, ctxDiff, ctxMean, ctxMaxima].forEach(ctx => {
+                ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+            });
+            
+            // Reset info
+            document.getElementById('info1').textContent = 'Brak zdjęcia';
+            document.getElementById('info2').textContent = 'Brak zdjęcia';
+            document.getElementById('infoDiff').textContent = 'Oczekiwanie na przetworzenie';
+            document.getElementById('infoMean').textContent = 'Oczekiwanie na przetworzenie';
+            document.getElementById('infoMaxima').textContent = 'Oczekiwanie na przetworzenie';
+            
+            updateStatus('Reset wykonany. Gotowy do uruchomienia kamery.', 'info');
+        });
+        
+        function updateStatus(message, type = 'info') {
+            status.textContent = message;
+            status.className = 'status';
+            if (type === 'success') status.classList.add('success');
+            if (type === 'info') status.classList.add('info');
+        }
+    </script>
+</body>
+</html>
