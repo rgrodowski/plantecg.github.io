@@ -452,7 +452,7 @@ function detectNetwork() {
       const ip = /([0-9]{1,3}(\.[0-9]{1,3}){3})/.exec(e.candidate.candidate)?.[1];
       if (ip && !ip.startsWith('127')) {
         const parts = ip.split('.');
-        serverBase = parts[0]+'.'+parts[1]+'.'+parts[2]+'.199';
+        serverBase = parts[0]+'.'+parts[1]+'.'+parts[2]+'.140';
         netInfoEl.textContent = 'Serwer: ' + serverBase;
         logLine('Sieć: ' + ip + ' → serwer: ' + serverBase, 'ok');
         pc.close();
@@ -460,13 +460,13 @@ function detectNetwork() {
     };
     setTimeout(() => {
       if (!serverBase) {
-        serverBase = '192.168.1.199';
+        serverBase = '192.168.1.140';
         netInfoEl.textContent = 'Serwer: ' + serverBase + ' (domyślny)';
         logLine('Fallback IP: ' + serverBase, 'info');
       }
     }, 3000);
   } else {
-    serverBase = '192.168.1.199';
+    serverBase = '192.168.1.140';
     netInfoEl.textContent = 'Serwer: ' + serverBase + ' (domyślny)';
   }
 }
@@ -614,7 +614,7 @@ function captureFrame(canvas) {
 // HTTP
 // ─────────────────────────────────────────────────────────────────
 async function httpCmd(cmd) {
-  const url = 'http://' + (serverBase || '192.168.1.199') + '/' + cmd;
+  const url = 'http://' + (serverBase || '192.168.1.140') + '/' + cmd;
   logLine('HTTP GET ' + url, 'dim');
   try {
     const resp = await fetch(url, { signal: AbortSignal.timeout(2000) });
