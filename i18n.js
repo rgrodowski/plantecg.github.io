@@ -18,7 +18,7 @@ const i18n = {
 
   // Index page UI elements
   index: {
-    en: { title: "Chlorophyll Fluorescence", heading: "PlantECG fluorometer data processing", selectFiles: "Select CSV files", getResults: "Get results" },
+    en: { title: "Chlorophyll Fluorescence", heading: "PlantECG fluorimeter data processing", selectFiles: "Select CSV files", getResults: "Get results" },
     pl: { title: "Fluorescencja chlorofilu", heading: "Przetwarzanie danych fluorymetru PlantECG", selectFiles: "Wybierz pliki CSV", getResults: "Pobierz wyniki" },
     ja: { title: "クロロフィル蛍光", heading: "PlantECG 蛍光計の測定結果", selectFiles: "CSVファイルを選択", getResults: "結果を取得" }
   },
