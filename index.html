@@ -4,56 +4,18 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Chlorophyll Fluorescence</title>
-  
-  <style>
-    html { font-family: Helvetica;
-      display: inline-block;
-      margin: 0px auto; 
-      text-align: center;}
-      
-    body{margin-top: 10px;} 
-    h3 {color: #444444;margin-bottom: 50px;}
-    
-    #chartbox {
-      display: block;
-      width: 600px;
-    }
-    label[for="file-input"] {
-      padding: 12px 24px;
-      font-size: 16px;
-      background-color: #4CAF50;
-      color: white;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: background-color 0.3s;
-    }
-
-    label[for="file-input"]:hover {
-      background-color: #45a049;
-    }
-
-    #download-chart {
-      padding: 12px 24px;
-      font-size: 16px;
-      background-color: #2196F3;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: background-color 0.3s;
-    }
-
-    #download-chart:hover {
-      background-color: #0b7dda;
-    }
-    
-    
-  </style>
-  
+  <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   </head>
   <body>
+    <nav>
+      <a href="index.html">Analyzer</a>
+      <a href="device-guide.html">Device Guide</a>
+      <a href="about.html">About</a>
+      <a href="press.html">Press</a>
+      <a href="contact.html">Contact</a>
+    </nav>
     <h3>PlantECG fluorymeter data processing</h3>
     
   <div style="width:600px; margin:0 auto; margin-bottom: 20px; id="chartbox">
@@ -204,38 +166,33 @@ function handleFileSelect(e) {
     reader.readAsText(file);
   });
 }
+
 var files = [];
-var namfiles = [];
-var allRows = [];
-var filenr = 0;                     //uploaded files nr
-var firstFile = true;              // file addition
+var fnr = 0;
+var nrFiles = 0;
 
-var filesName = document.getElementById("file-input");
-
-filesName.addEventListener("change", (event) => {
-  filesName = event.target.files;
-  for (const fil of filesName) {
-    namfiles.push(fil.name);
-  }
-});
-
-function tryStartProcessFiles(expectedSize) {   //from file button handler
-  console.log("try ", expectedSize);
-  if (files.length < expectedSize) {            //wait for all files
+function tryStartProcessFiles(expectedSize) {
+  if (files.length < expectedSize) {
     console.log("still waiting for " + (expectedSize - files.length) + " loads");
     return;
   }
+  nrFiles = files.length;
   console.log("got " + files.length + " elements in files");
-
-  for (f = 0; f < files.length; f++) {
-    console.log("fileslen", files.length);
-    handleData(files[f]);  // -> handleData for one file
+  //files.forEach((file) => console.log("file is " + file.length + " characters long"));
+  //files.forEach((file) => handleData(file, nrFiles));
+  for (f = fnr; f < files.length; f++) {
+      handleData(files[f], nrFiles);
   }
-  console.log("files ", namfiles);
-  files = [];
+  fnr = nrFiles;
 }
-                                    ///////handleData/////////////
-function handleData(file) {         // for current file -> 
+
+var allRows = [];
+var filenr = 0;                     //uploaded files nr
+var was2Rows = false;
+                                   ///////handleData/////////////
+
+
+function handleData(file) {
   filenr++;
   allRows = file.split("\n");
   timeRes = allRows[0].split(',');
@@ -249,45 +206,97 @@ function handleData(file) {         // for current file ->
   if (filenr == 1) {                              //first reference file
     appendCSV(timeRes, "time");    
 
-    if (nrRows == 2) {                               // 1 time and 1 data rows
-      handleNewDataSet(timeRes, handleRows[1], namfiles[0]);   //label
-      appendCSV(handleRows[1], namfiles[0]);
-      addOJIPpar(handleRows[1], namfiles[0]);
-      e.style.display = 'block';                    //show 'Get results' button
-      return;
-    } 
-    if (nrRows > 2) {
-      for (nrr = 1; nrr < nrRows; nrr++) {
-        handleNewDataSet(timeRes, handleRows[nrr], namfiles[0]);   //label for all curves
-      }
-      var rAv = createAverChart(handleRows);
-      appendCSV(rAv, "avg-" + namfiles[0]);
-      addOJIPpar(rAv, namfiles[0]);
-      e.style.display = 'block';                    //show 'Get results' button
-    }
-    } else {                                        //filenr > 1  ///////////////////////////////////
-      if (filenr == 2) {
-        filterChart("aver-" + namfiles[0]);
-        myChart.data.datasets[0].backgroundColor = ['green'];
-        myChart.data.datasets[0].label = ['ref-' + namfiles[0]];
-        console.log("filename ", namfiles[filenr - 1]);
-        measNr = 1;
-      }
-      var avRes
-      if (nrRows > 2) {
-        avRes = getAver(handleRows);
-      } else {                                     // there is row  no average 
-        avRes = handleRows[1];
-      }
-      appendCSV(avRes, "avg-" + namfiles[filenr - 1]);
-      console.log("appcsv ", "avg-" + filenr, "namfiles[filenr ]", namfiles[filenr -1]);
+  if (nrRows == 2) {                            // 1 time and 1 data rows
+    handleNewDataSet(timeRes, handleRows[1], "aver");   //label
+    appendCSV(handleRows[1], "aver");
+    addOJIPpar(handleRows[1], "aver");
+    e.style.display = 'block';            //show 'Get results' button
+  } 
 
-        handleNewDataSet(timeRes, avRes, "avg-" + namfiles[filenr - 1]);   //label
-      //console.log("call ", surce);
-      e.style.display = 'block';                    //show 'Get results' button
-      addOJIPpar(avRes, filenr + namfiles[filenr - 1]);
+  if (nrRows > 2) {
+    for (nrr = 1; nrr < nrRows; nrr++) {
+      handleNewDataSet(timeRes, handleRows[nrr], 'res' + nrr);   //label
     }
-  console.log("stringres ", stringres.split('\n'));
+    var rAv = createAverChart(handleRows);
+    appendCSV(rAv, "aver" + (filenr));
+    addOJIPpar(rAv, "aver" + (filenr - 1));
+    e.style.display = 'block';            //show 'Get results' button
+    }
+  } else {                                  //filenr > 1
+    if (filenr == 2) {
+      filterChart('aver');
+      myChart.data.datasets[0].backgroundColor = ['green'];
+      measNr = 1;
+    }
+    var avRes
+    if (nrRows > 2) {
+      avRes = getAver(handleRows);
+    } else {                                // there is row  no average 
+      avRes = handleRows[1];
+    }
+    appendCSV(avRes, "aver" + (filenr));
+      
+    handleNewDataSet(timeRes, avRes, 'a' + filenr);   //label
+  
+    e.style.display = 'block';            //show 'Get results' button
+    addOJIPpar(avRes, 'a' + filenr);
+  }
+  console.log(stringres.split('\n'));
+}
+
+
+function handleDataOld(file) {
+  filenr++;
+  allRows = file.split("\n");
+  timeRes = allRows[0].split(',');
+  if (timeRes[0] != 0.01 && timeRes.length != 119) {
+    alert("Wrong file format");
+    location.reload();
+    return;             
+  }  
+  var handleRows = readRows(allRows);             // extract data rows 
+  const nrRows = handleRows.length;
+  if (filenr == 1) {
+    appendCSV(timeRes, "time");               //first row of first file
+  }
+  console.log('nrRows', nrRows);
+   
+  if (nrRows == 2) {                            // 1 time and 1 data rows
+    handleNewDataSet(timeRes, handleRows[1], "aver");   //label
+    appendCSV(handleRows[1], "aver");
+    addOJIPpar(handleRows[1], "aver");
+    e.style.display = 'block';            //show 'Get results' button
+  } 
+  
+  if (was2Rows == true) {
+    filterChart('aver');               // true - return chart with aver
+    was2Rows = false;
+  }
+  if (nrRows > 2) {
+      
+  if (filenr == 1) {
+    for (nrr = 1; nrr < nrRows; nrr++) {
+      handleNewDataSet(timeRes, handleRows[nrr], 'res' + nrr);   //label
+    }
+    createAverChart(handleRows);
+  }
+  if (filenr == 2) {
+    myChart.data.datasets[0].backgroundColor = ['green'];
+    measNr = 1;
+  }
+  var avRes = getAver(handleRows);
+  appendCSV(avRes, "aver" + filenr);
+      
+  if (filenr != 1){
+    handleNewDataSet(timeRes, avRes, 'a' + filenr);   //label
+  }
+
+  e.style.display = 'block';            //show 'Get results' button
+  addOJIPpar(avRes, 'a' + filenr);
+  }
+  if (nrRows == 2) {
+    was2Rows = true;
+  }
 }
 
 function filterChart(targetLabel) {
@@ -327,7 +336,7 @@ function getAver(dataRes) {
 }
 
 function handleNewDataSet(timeRes, datares, label) {
-  console.log('handle label ', label);
+  //console.log('tres datres', timeRes, datares);
   var scatDat = mergeData(timeRes, datares)
   var updatset = {
     label: label,
@@ -352,7 +361,6 @@ function mergeData(tres, datres){
 }
 
 function appendCSV(datares, str) {
-  console.log("appCSV", str);
   maxBuff = datares;                   // store current data to fmpos()
   stringres += str + ",";
   stringres += datares.join(',');
@@ -402,13 +410,17 @@ function createAverChart(allrows) {
   var label;
     label = "+SD";
     handleNewDataSet(timeRes, upperCurv, label);
+    //appendCSV(upperCurv, label);
     
-    label = "aver-" + namfiles[0];
+    label = "aver";
     handleNewDataSet(timeRes, averTable, label);
+    //appendCSV(averTable, label);
 
     label = "-SD";
     handleNewDataSet(timeRes, bottCurv, label);
+    //appendCSV(bottCurv, label);
       
+    // downloadCSV(stringres);
     return averTable;
 }
 
@@ -439,7 +451,7 @@ function addOJIPpar(ojipres, lab) {
   }
   jipParTable.push(tempOJIP);
   
-  getRadar(tempOJIP, 'avg-' + namfiles[filenr - 1]);
+  getRadar(tempOJIP, 'a' + filenr);
   //console.log('jipParTable', jipParTable);
 }
 
@@ -640,17 +652,7 @@ const parPosNr = filterRow();
 //console.log(parPosNr);
   
 </script>
+<script src="i18n.js"></script>
 </html>
-
-
-
-
-
-
-
-
-
-
-
 
 
