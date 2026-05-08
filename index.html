@@ -18,10 +18,13 @@
     </nav>
     <h3>PlantECG fluorimeter data processing</h3>
     
-  <div style="width:600px; margin:0 auto; margin-bottom: 20px; id="chartbox">
-    <canvas id="ojipChart"></canvas>  
+  <div style="width:500px; margin:0 auto; margin-bottom: 20px; id="chartbox">
+    <canvas id="ojipChart" height="250"></canvas>  
+
+  <div style="width:500px; margin:0 auto; margin-bottom: 20px; id="normbox">
+    <canvas id="normChart"s></canvas>  
     
-      <div id="files" style="display: flex; flex-direction: column; align-items: center; gap: 15px;">
+   <div id="files" style="display: flex; flex-direction: column; align-items: center; gap: 15px;">
     <label for="file-input">
       Select CSV files
       <input
@@ -48,28 +51,29 @@
   var e = document.getElementById("download-chart");
   e.style.display = 'none';   //block get results button
 
-  
   var measNr = 0;               //nr measurements
   var timeRes = [];             //time from file
-  var scatRes = [];             //time + data for chart
-  //var radarRes = [];
-  var maxBuff = [];             // for fmpos()
   var stringres = "";           //csv file  for save 
-  var allFiles = [];            // files to download
   var colorpalette = ["green", "orange", "magenta", "gray", "blue", "lime", 
                       "violet", "brown", "purple", "cyan", "darkgreen", "red",
                       "gold", "khaki", "lightgreen", "plum", "greenyellow", "tomato",
                       "moccasin", "darkkhaki", "blueviolet", "lavender", "darkcyan",
                       "firebrick", "skyblue", "lightgreen", "plum", "orchid", "salmon",
                       "peru", "yellow", "olive", "navy", "deeppink"];
+                      
+  var titleText = "Fluorescence [rel. units]";
+  var labels = [];                  // global variables for charts
+  var config = {};
   
-  const labels = [];
+  function charSet(titleText) {
+    
+  labels = [];
   let data = {
     labels: labels,
     datasets: [],
   }
   
-  const config = {
+  config = {
     type: 'scatter',
     data: data,
     options: {
@@ -89,7 +93,7 @@
         y: {
           title: {
             display: true,
-            text: 'Fluorescence [rel. units]'
+            text: titleText
           }
         }
       },
@@ -147,10 +151,19 @@
     }
   }]
   };
+}
 
+charSet(titleText);
 // chart creation
 let ctx = document.getElementById("ojipChart").getContext('2d');
 let myChart = new Chart(ctx, config);
+
+titleText = "Normalized units";
+charSet(titleText);
+
+let normctx = document.getElementById("normChart").getContext('2d');
+let normChart = new Chart(normctx, config);
+
 
 //////////////////file upload/////////////////////////
 
@@ -168,9 +181,6 @@ function handleFileSelect(e) {
 }
 var files = [];
 var namfiles = [];
-var allRows = [];
-var filenr = 0;                     //uploaded files nr
-var firstFile = true;              // file addition
 
 var filesName = document.getElementById("file-input");
 
@@ -181,89 +191,132 @@ filesName.addEventListener("change", (event) => {
   }
 });
 
-function tryStartProcessFiles(expectedSize) {   //from file button handler
-  console.log("try ", expectedSize);
-  if (files.length < expectedSize) {            //wait for all files
-    console.log("still waiting for " + (expectedSize - files.length) + " loads");
+function tryStartProcessFiles(expectedSize) {        //from file button handler
+  if (namfiles.length < expectedSize) {              //wait for all files
     return;
-  }
-  console.log("got " + files.length + " elements in files");
-
-  for (f = 0; f < files.length; f++) {
-    console.log("fileslen", files.length);
-    handleData(files[f]);  // -> handleData for one file
-  }
-  console.log("files ", namfiles);
+  }  
+  handleData(namfiles);                              // -> handleData for one file !
+  
   files = [];
+  document.getElementById('file-input').disabled = true;
 }
-                                   ///////handleData/////////////
-function handleData(file) {         // for current file -> 
-  filenr++;
-  allRows = file.split("\n");
+
+                      /////// handleData /////////////
+var filesArr = [];
+
+function handleData(namfiles) {                    // for one file
+  measNr = 0;
+  var allRows = files[0].split("\n");               //all rows of file
   timeRes = allRows[0].split(',');
   if (timeRes[0] != 0.01 && timeRes.length != 119) {
     alert("Wrong file format");
     location.reload();
     return;             
-  }  
-  var handleRows = readRows(allRows);             // extract data rows 
-  const nrRows = handleRows.length;
-  if (filenr == 1) {                              //first reference file
-    appendCSV(timeRes, "time");    
+  }
 
-    if (nrRows == 2) {                               // 1 time and 1 data rows
-      handleNewDataSet(timeRes, handleRows[1], namfiles[0]);   //label
-      appendCSV(handleRows[1], namfiles[0]);
-      addOJIPpar(handleRows[1], namfiles[0]);
-      e.style.display = 'block';                    //show 'Get results' button
-      return;
-    } 
-    if (nrRows > 2) {
-      for (nrr = 1; nrr < nrRows; nrr++) {
-        handleNewDataSet(timeRes, handleRows[nrr], namfiles[0]);   //label for all curves
-      }
-      var rAv = createAverChart(handleRows);
-      appendCSV(rAv, "avg-" + namfiles[0]);
-      addOJIPpar(rAv, namfiles[0]);
-      e.style.display = 'block';                    //show 'Get results' button
-    }
-    } else {                                        //filenr > 1  ///////////////////////////////////
-      if (filenr == 2) {
-        filterChart("aver-" + namfiles[0]);
-        myChart.data.datasets[0].backgroundColor = ['green'];
-        myChart.data.datasets[0].label = ['ref-' + namfiles[0]];
-        console.log("filename ", namfiles[filenr - 1]);
-        measNr = 1;
-      }
-      var avRes
-      if (nrRows > 2) {
-        avRes = getAver(handleRows);
-      } else {                                     // there is row  no average 
-        avRes = handleRows[1];
-      }
-      appendCSV(avRes, "avg-" + namfiles[filenr - 1]);
-      console.log("appcsv ", "avg-" + filenr, "namfiles[filenr ]", namfiles[filenr -1]);
-
-        handleNewDataSet(timeRes, avRes, "avg-" + namfiles[filenr - 1]);   //label
-      //console.log("call ", surce);
-      e.style.display = 'block';                    //show 'Get results' button
-      addOJIPpar(avRes, filenr + namfiles[filenr - 1]);
-    }
-  console.log("stringres ", stringres.split('\n'));
-}
-
-function filterChart(targetLabel) {
-  myChart.data.datasets = myChart.data.datasets.filter(function(obj) {
-      return (obj.label == targetLabel); 
-  });
-  myChart.update(); 
-}
-
-function readRows(allRows) {
-  var dataRows = [];                                     //numeric data
+  filesArr.push(allRows);
+  if (filesArr.length < namfiles.length) return;
   
-  for (row of allRows) { 
-    if (row.length == 0) {break;}
+  if (namfiles.length == 1) {
+    makeCharts(allRows, namfiles);             // charts drawing
+    
+  } else {                      ////////////   files > 1   ////////////
+    var averArr = [];                                 // all average from files
+    averArr.push(timeRes.toString());
+    for (f = 0; f < namfiles.length; f++) {                    // over all files
+  
+      var tempRows = filesArr[f];                 // each files rows
+      var rowAv = rowsAver(readRows(tempRows));
+      averArr.push(rowAv.toString());
+    }
+    measNr = 0;
+    makeCharts(averArr, namfiles);             // charts drawing
+  }
+}
+
+function makeCharts(allFiles, namfiles) {
+    var fileRows = readRows(allFiles);         // extract data rows 
+    const nrRows = fileRows.length;
+    var filnam = namfiles[0];
+    if (nrRows == 2) {
+      handleNewDataSet(timeRes, fileRows[1], namfiles[0]);    //label
+      addOJIPpar(fileRows[1], filnam);       // radar chart
+      e.style.display = 'block';                    // show 'Get results' button
+    } else {
+      for (nrr = 1; nrr < nrRows; nrr++) {
+        if (namfiles.length > 1) {
+          filnam = namfiles[nrr - 1];
+        }
+        handleNewDataSet(timeRes, fileRows[nrr], filnam);   //label for all curves
+        addOJIPpar(fileRows[nrr], filnam);
+        measNr++;
+      }
+      var rAv = createAverChart(fileRows);
+      e.style.display = 'block';                      // show 'Get results' button    
+    }
+    handleRows = rowsNorm(fileRows);              // reference row store
+    measNr = 0;
+    for (nrr = 0; nrr < nrRows - 1; nrr++) {
+        if (namfiles.length > 1) {
+          filnam = namfiles[nrr];
+        }
+      handleNormDataSet(timeRes, handleRows[nrr], filnam);   //label for all curves
+      measNr++;
+    }
+      e.style.display = 'block'; 
+}
+
+function rowsAver(avrows){
+  var averTable = [];
+   for (var j = 0; j < timeRes.length; j++) {        // over all data points
+    var sumpos = 0;
+    var posval = [];
+    
+    for (var i = 1; i < avrows.length; i++) {      //over all curves
+      var datrow = avrows[i];
+      datrow = datrow.map(Number);
+      posval.push(datrow[j]);
+      sumpos += datrow[j];
+    }
+    var avr = Math.round(sumpos * 100 / (avrows.length - 1)) / 100;
+    averTable.push(avr); 
+  }
+  return averTable;
+}
+
+function rowsNorm(arr) {                // allrows there
+  var normarr = [];
+  var refRow = getNorm(arr[1]);
+  for (let n = 1; n < arr.length; n++) {    // row 0 - time last \n
+    var curRow = getNorm(arr[n]);
+    var normRow = [];
+    
+    for (let i = 0; i < curRow.length; i++) {
+      normRow.push(curRow[i] - refRow[i]);
+    }
+    normarr.push(normRow);
+  }
+  return normarr;
+}
+
+function getNorm(arr) {             // normalize 1 row from file
+  normalize = function(val, max, min) { 
+    return(val - min) / (max - min); 
+  }
+  max = Math.max.apply(null, arr) 
+  min = Math.min.apply(null, arr)
+  hold_normed_values=[]
+  arr.forEach(function(this_num) {
+    hold_normed_values.push(normalize(this_num, max, min))
+  })
+  return(hold_normed_values)
+}
+
+function readRows(rowsToRead) {
+  var dataRows = [];                                     //only numerical data
+  
+  for (row of rowsToRead) { 
+    if (row.length == 0) break;
     dataRows.push(row.split(',').map(Number));
   }
   return dataRows;
@@ -271,8 +324,7 @@ function readRows(allRows) {
 
 function getAver(dataRes) {
   var avtab = [];
-  var rowLen = dataRes[0].length;           // 118
-  for (var j = 0; j < rowLen; j++) {        // over all data points
+  for (var j = 0; j < timeRes.length; j++) {        // over all data points
     var sumpos = 0;
     var posval = [];
   
@@ -288,7 +340,7 @@ function getAver(dataRes) {
   return avtab;
 }
 
-function handleNewDataSet(timeRes, datares, label) {
+function handleNewDataSet(timeRes, datares, label) {      // merge time and data
   var scatDat = mergeData(timeRes, datares)
   var updatset = {
     label: label,
@@ -299,25 +351,27 @@ function handleNewDataSet(timeRes, datares, label) {
   myChart.data.datasets.push(updatset);
 
   myChart.update();           // new line on chart
-  measNr++;
 }
 
-function mergeData(tres, datres){
-  
+function handleNormDataSet(timeRes, datares, label) {     // for one set
+  var scatDat = mergeData(timeRes, datares)               // merge time and data
+  var updatset = {
+    label: label,
+    backgroundColor: colorpalette[measNr],
+    pointRadius: 2,
+    data: scatDat
+  };
+  normChart.data.datasets.push(updatset);
+  normChart.update();           // new line on chart
+}
+
+function mergeData(tres, datres){  
   var storage = [];
   for (c = 0; c < tres.length; c++) {
     var entry = {y: datres[c], x: tres[c]};
     storage.push(entry);
   }
   return storage;
-}
-
-function appendCSV(datares, str) {
-  console.log("appCSV", str);
-  maxBuff = datares;                   // store current data to fmpos()
-  stringres += str + ",";
-  stringres += datares.join(',');
-  stringres += "\n";
 }
 
 function createAverChart(allrows) {
@@ -336,9 +390,8 @@ function createAverChart(allrows) {
   };
     
   timeRes = allrows[0];
-  const rowLen = timeRes.length     // 118
     
-  for (var j = 0; j < rowLen; j++) {        // over all data points
+  for (var j = 0; j < timeRes.length; j++) {        // over all data points
     var sumpos = 0;
     var posval = [];
     
@@ -356,20 +409,22 @@ function createAverChart(allrows) {
     upperCurv.push(Math.round((avr + sdpos) * 100) / 100);
     bottCurv.push(Math.round((avr - sdpos) * 100) / 100);
   }
-  myChart.data.datasets.forEach(function(ds) {
-    ds.hidden = true;
-  });
-  
-  var label;
+    var label;
     label = "+SD";
     handleNewDataSet(timeRes, upperCurv, label);
-    
+    measNr++;
     label = "aver-" + namfiles[0];
     handleNewDataSet(timeRes, averTable, label);
-
+    measNr++;
     label = "-SD";
     handleNewDataSet(timeRes, bottCurv, label);
-      
+    measNr++;
+
+    if (measNr > 3) {
+      myChart.hide(measNr - 1);                   //hide +SD aver -SD
+      myChart.hide(measNr - 2);
+      myChart.hide(measNr - 3);
+    }
     return averTable;
 }
 
@@ -381,13 +436,16 @@ function downloadCSV(stringres) {
   hiddenElement.click();
 }
 
-var rowData;
+
+                              /////////////add ojip param//////////////////////
+
 var jipParTable = [];
-                          /////////////add ojip//////////////////////
+var maxFuncPar = []; 
+                         
 function addOJIPpar(ojipres, lab) {
-  
-  rowData = ojipres;
-  var parRow = getParam(rowData);                      // make parameter values table
+  //console.log("ojipres from addOJIPpar", ojipres);
+  maxFuncPar = ojipres;
+  var parRow = getParam(ojipres);                      // make parameter values table
   var tempOJIP = [];
   
   for (n = 0; n < parRow.length; n++) {                                //rounding
@@ -400,31 +458,28 @@ function addOJIPpar(ojipres, lab) {
   }
   jipParTable.push(tempOJIP);
   
-  getRadar(tempOJIP, 'avg-' + namfiles[filenr - 1]);
-  //console.log('jipParTable', jipParTable);
+  getRadar(tempOJIP, lab);
 }
 
-
-
 var referRow = [];
-var rownr = 0;
+var rowNr = 0;
 
 function getRadar(radRes, lab) {                //
   var chartRow = [];
-  //console.log('getradar');
   for (posnr of parPosNr) {
     chartRow.push(radRes[posnr]);
   }
-  if (rownr == 0 && firstRadar == false) {
+  if (rowNr == 0 && firstRadar == false) {
     firstRadar = true;
     referRow = chartRow;
     chartRow = [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 
-                100, 100, 100, 100, 100, 100, 100, 100, 100, 100];
+                100, 100, 100, 100, 100, 100, 100, 100, 100, 100
+                ];
     var mydataset = {
       labels: paramSet,
       datasets: [{
         label: lab,
-        borderColor: colorpalette[rownr],
+        borderColor: colorpalette[0],               // 0 - green
         data: chartRow
       }]
     };
@@ -437,14 +492,11 @@ function getRadar(radRes, lab) {                //
             color: 'white'
           }
         },
-    
-    },
+      },
       plugins: [{
         id: 'customCanvasBackgroundColor',
         beforeDraw: (chart, args, options) => {
-        const {
-          ctx
-        } = chart;
+        const { ctx } = chart;
         ctx.save();
         ctx.globalCompositeOperation = 'destination-over';
         ctx.fillStyle = options.color || '#99ffff';
@@ -453,25 +505,26 @@ function getRadar(radRes, lab) {                //
         }
       }],
     });
-    rownr++;
+    rowNr++;
   } else {
-    
     for (n = 0; n < chartRow.length; n++) {             //refering
       chartRow[n] = 100 * chartRow[n] / referRow[n];
     }
     var updatset = {
       label: lab,
-      borderColor: colorpalette[rownr],
+      borderColor: colorpalette[rowNr],
       data: chartRow
     };
     radarChart.data.datasets.push(updatset);
-    rownr++;
     radarChart.update();
+    rowNr++;
   }
 } 
 
-function getParam(rowData) {                   // translate param names and get formulas
-  const a = rowData;                            // a -> translation table name!
+function getParam(ojipres) {                   // translate param names and get formulas
+  
+  //console.log("ojipres from getParam", ojipres);
+  const a = ojipres;                            // a -> translation table name!
   var L = {};
   var vals = [];
   
@@ -528,21 +581,13 @@ formPar += "L.Fo/L.Fm,(L.Fm-L.Fo)/L.Fm,L.S1 * L.S2 * L.S3,L.Piabs_2 * L.S4";    
 var formP = formPar.split(',');
 
 function amax() {
-  return Math.max.apply(null, rowData);
+  return Math.max.apply(null, maxFuncPar);
 }
 
 function fmpos() {
-  var maxx = Math.max(...rowData);
-  var i = rowData.indexOf(maxx);
+  var maxx = Math.max(...maxFuncPar);
+  var i = maxFuncPar.indexOf(maxx);
   return Math.floor(timeRes[i]);
-}
-function addAmb(allRows) {
-  const ambDat = allRows.slice(-6);
-  var temp = ambDat[0];
-  var press = ambDat[1];
-  var hum = ambDat[2];
-  
-  stringres += '\n' + temp + press + hum + '\n\n';
 }
 
 var timeToWait = 1000; 
@@ -564,18 +609,26 @@ function waitFunction1() {
   aDownloadLink.click();
  }
  
- 
  function sendResults() {                    //Get results button handle
-   
-  stringres += '\nOJIParam,' + parN + ',\n';
+  console.log("filesArr", filesArr);
+  stringres += 'OJIParam,' + parN + ',\n';
   for (n = 0; n < jipParTable.length; n++) {
-    stringres +=  'aver' + (n + 1) +',' + jipParTable[n] + '\n';
+    var namfil = namfiles[n];
+    if (typeof namfil === 'undefined') namfil = " ";
+    stringres +=  namfil +',' + jipParTable[n] + '\n';
   }
-  addAmb(allRows);
-  //console.log('stringres', stringres.split('\n'));
+  const ambDat = filesArr[0].slice(-6, -1);
+  console.log("ambDat", ambDat);
+  var temp = ambDat[0];
+  var press = ambDat[1];
+  var hum = ambDat[2];
+  
+  stringres += '\n' + temp + press + hum;
+  stringres += '\n ,(c) Kalaji & Grodowski 2025' 
+  console.log('stringres', stringres.split('\n'));
   downloadCSV(stringres);
-  setTimeout(function(){ waitFunction(); }, timeToWait);
-  setTimeout(function(){ waitFunction1(); }, timeToWait);
+  //setTimeout(function(){ waitFunction(); }, timeToWait);
+  //setTimeout(function(){ waitFunction1(); }, timeToWait);
 }
 
 var lastJIProw = 0;
@@ -599,7 +652,7 @@ function filterRow() {                    //filter radar row
 
 const parPosNr = filterRow();
 //console.log(parPosNr);
-  
+  //  myChart.resize(600, 450);
 </script>
 <script src="i18n.js"></script>
 </html>
