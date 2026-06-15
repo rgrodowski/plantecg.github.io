@@ -1,3 +1,4 @@
+<!-- index.html from github 6.08.2026 -->
 
 <!DOCTYPE html> <html>
 <head>
@@ -9,6 +10,40 @@
 
   </head>
   <body>
+    <style>
+form {
+  border-radius: 5px;
+  background-color: #f2f2f2;
+  padding: 20px;
+}
+
+label {display: block;}
+
+input[type=text], select {
+  width: 50%;
+  padding: 12px;
+  margin: 4px 0;
+  display: inline-block;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+
+input[type=submit] {
+  width: 50%;
+  background-color: #4CAF50;
+  color: white;
+  padding: 14px;
+  margin: 4px 0;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+input[type=submit]:hover {
+  background-color: #45a049;
+}
+</style>
     <nav>
       <a href="index.html">Analyzer</a>
       <a href="device-guide.html">Device Guide</a>
@@ -46,7 +81,112 @@
     </div>
   </body>
   
+    <div id="message"></div>
+    <form id="myForm">
+      <input type="text" id="uID" name="uID" required placeholder="user ID">
+      <input type="text" id="pname" name="pname" required placeholder="plant name">
+      <input type="submit" id="clk" value="Submit" disabled>
+    </form>
+    
 <script>
+  
+    var errMsgHolder = document.getElementById('message');
+    errMsgHolder.innerHTML = "Enter description";
+    document.getElementById("myForm").addEventListener("submit", submitForm);
+    var formObject = {};
+  
+    function submitForm(event) {
+      event.preventDefault();
+      var formData = new FormData(event.target);
+      
+      formObject["time"] = addTime();
+      
+      formData.forEach(function(value, key) {         //user id, plant name
+        formObject[key] = value;
+      });
+
+      var name = formObject["pname"];
+      var ntest = checkName(name);
+      name = formObject["uID"];
+      var utest = checkName(name);
+      
+      var rows = fileRows.slice(1);              // remove time rows
+      console.log("rows", rows);
+      formObject['data'] = '';
+      for (row in rows) {
+        formObject['data'] += rows[row] + '\n';        
+      }
+      console.log(formObject);
+      
+      if (ntest == true && utest == true) {
+      fetch(
+        "https://script.google.com/macros/s/AKfycby9xOKocg1rO_K3uCK4vQsPjm2rrTgvWAnbo7HtPmKn2X5Ur99k_dBWBuOrjTcoe8IH/exec",
+        {
+          method: "POST",
+          body: JSON.stringify(formObject),
+        }
+      )
+      .then(res => {
+        if (res.ok) {
+          console.log("successfully send");
+          document.getElementById('message').innerHTML = "successfully send";
+        } else {
+          // Handle error if needed
+        }
+      })
+      .catch(err => console.log(err));
+
+      event.target.reset();
+      const button = 
+          document.querySelector("myForm");
+            document
+            .getElementById("clk")
+            .addEventListener("click", (event) => {
+                event.preventDefault();
+            });
+    }
+  }
+
+  function addTime() {
+    return (new Date().toLocaleString().replace(",","").replace(/:.. /," "));
+  }
+  
+  function checkName(input) {
+    if (input.length < 2) {
+        errMsgHolder.innerHTML =
+            'Enter at least 5 letters';
+            document.getElementById('message').style.color = 'red';
+        return false;
+    } else if (input.length > 20) {
+        errMsgHolder.innerHTML =
+            'Enter less than 20 letters';
+            document.getElementById('message').style.color = 'red';
+        return false;
+    } else if (!(/^\S{3,}$/.test(input))) {
+        errMsgHolder.innerHTML =
+            'Name cannot contain whitespace';
+            document.getElementById('message').style.color = 'red';
+        return false;
+    }else if(!(/^[a-zA-Z]+$/.test(input))) {
+        errMsgHolder.innerHTML=
+            'Only alphabets allowed'
+            document.getElementById('message').style.color = 'red';
+        return false;
+    }
+    else if(!(/^(?:(\w)(?!\1\1))+$/.test(input))) {
+        errMsgHolder.innerHTML=
+            'per 3 alphabets allowed'
+            document.getElementById('message').style.color = 'red';
+        return false;
+    }
+    else {
+        errMsgHolder.innerHTML = '';
+        document.getElementById('message').style.color = 'black';
+        return true;
+    }       
+  }
+
+  
   
   var e = document.getElementById("download-chart");
   e.style.display = 'none';   //block get results button
@@ -198,13 +338,15 @@ function tryStartProcessFiles(expectedSize) {        //from file button handler
   handleData(namfiles);                              // -> handleData for one file !
   
   files = [];
-  document.getElementById('file-input').disabled = true;
 }
 
                       /////// handleData /////////////
 var filesArr = [];
 
 function handleData(namfiles) {                    // for one file
+  document.getElementById("download-chart").disabled = false;
+  document.getElementById("clk").disabled = false;
+  
   measNr = 0;
   var allRows = files[0].split("\n");               //all rows of file
   timeRes = allRows[0].split(',');
@@ -233,9 +375,9 @@ function handleData(namfiles) {                    // for one file
     makeCharts(averArr, namfiles);             // charts drawing
   }
 }
-
+var fileRows;
 function makeCharts(allFiles, namfiles) {
-    var fileRows = readRows(allFiles);         // extract data rows 
+    fileRows = readRows(allFiles);         // extract data rows 
     const nrRows = fileRows.length;
     var filnam = namfiles[0];
     if (nrRows == 2) {
@@ -434,6 +576,8 @@ function downloadCSV(stringres) {
   hiddenElement.target = '_blank';
   hiddenElement.download = 'ojipres.csv';
   hiddenElement.click();
+  
+  document.getElementById("download-chart").disabled = true;
 }
 
 
@@ -589,46 +733,19 @@ function fmpos() {
   var i = maxFuncPar.indexOf(maxx);
   return Math.floor(timeRes[i]);
 }
-
-var timeToWait = 1000; 
-function waitFunction() {
-  const canvas = document.getElementById('ojipChart');
-  const image = canvas.toDataURL();
-  var aDownloadLink = document.createElement('a');
-  aDownloadLink.download = 'oijpimg.png';
-  aDownloadLink.href = image;
-  aDownloadLink.click();
- }
- 
-function waitFunction1() {
-  const canvas = document.getElementById('radarChart');
-  const image = canvas.toDataURL();
-  var aDownloadLink = document.createElement('a');
-  aDownloadLink.download = 'oijpar.png';
-  aDownloadLink.href = image;
-  aDownloadLink.click();
- }
  
  function sendResults() {                    //Get results button handle
-  console.log("filesArr", filesArr);
+  //console.log("filesArr", filesArr);
   stringres += 'OJIParam,' + parN + ',\n';
   for (n = 0; n < jipParTable.length; n++) {
     var namfil = namfiles[n];
     if (typeof namfil === 'undefined') namfil = " ";
     stringres +=  namfil +',' + jipParTable[n] + '\n';
   }
-  const ambDat = filesArr[0].slice(-6, -1);
-  console.log("ambDat", ambDat);
-  var temp = ambDat[0];
-  var press = ambDat[1];
-  var hum = ambDat[2];
-  
-  stringres += '\n' + temp + press + hum;
+
   stringres += '\n ,(c) Kalaji & Grodowski 2025' 
   console.log('stringres', stringres.split('\n'));
   downloadCSV(stringres);
-  //setTimeout(function(){ waitFunction(); }, timeToWait);
-  //setTimeout(function(){ waitFunction1(); }, timeToWait);
 }
 
 var lastJIProw = 0;
