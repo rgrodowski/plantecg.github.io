@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Chlorophyll Fluorescence</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#ffffff;color:#111;font-family:-apple-system,'Segoe UI',Roboto,sans-serif;font-size:15px;padding:12px;max-width:480px;margin:0 auto}
+h1{font-size:17px;color:#0a6b32;text-align:center;padding:6px 0 10px;font-weight:700}
+#videoEl{display:none}
+#canvas{width:100%;display:block;background:#222;border-radius:8px}
+#chartCanvas{width:100%;display:block;margin-top:10px}
+.fluor-val{font-size:52px;font-weight:700;text-align:center;color:#0a6b32;line-height:1;padding:10px 0 2px;font-variant-numeric:tabular-nums}
+.fluor-label{font-size:12px;color:#666;text-align:center;margin-bottom:8px}
+.field{margin:8px 0}
+.field label{display:block;font-size:12px;color:#555;font-weight:600;margin-bottom:4px}
+input[type=text],select{width:100%;background:#f4f5f4;color:#111;border:1px solid #ccc;padding:9px 10px;border-radius:8px;font-size:15px}
+.row{display:flex;align-items:center;gap:8px}
+input[type=range]{flex:1}
+.row .val-out{min-width:52px;text-align:right;font-size:13px;font-weight:700;color:#0a6b32}
+.btn{display:block;width:100%;padding:14px;font-size:16px;font-weight:700;border:none;border-radius:10px;cursor:pointer;margin:6px 0}
+#btnStart{background:#0a6b32;color:#fff}
+#btnStart:disabled{background:#ccc;color:#888}
+#btnStop{background:#c62828;color:#fff;display:none}
+#phaseInfo{font-size:14px;color:#333;text-align:center;min-height:20px;margin:6px 0;font-weight:600}
+#statusEl{font-size:12px;color:#333;padding:8px 10px;border:1px solid #ddd;border-radius:8px;background:#fafafa;min-height:36px;line-height:1.6;white-space:pre-wrap}
+#statusEl.err{color:#a30000;background:#fff5f5;border-color:#e2a5a5}
+</style>
+</head>
+<body>
+<h1>Chlorophyll Fluorescence</h1>
+
+<canvas id="canvas" width="480" height="360"></canvas>
+
+<div class="fluor-val" id="fluorVal">—</div>
+<div class="fluor-label">Fluorescence — average of top 3 areas</div>
+<div class="fluor-label" id="luxInfo">Ambient light: —</div>
+
+<div class="field">
+  <label>Laser server</label>
+  <input type="text" id="serverIp" value="192.168.0.140">
+</div>
+<div class="field">
+  <label>USB camera</label>
+  <select id="deviceSel"></select>
+</div>
+<div class="field">
+  <label>Measurement interval (min)</label>
+  <div class="row">
+    <input type="range" id="intervalSlider" min="1" max="60" step="1" value="10">
+    <span class="val-out" id="intervalOut">10 min</span>
+  </div>
+</div>
+
+<div id="phaseInfo">Ready to measure</div>
+
+<button class="btn" id="btnStart">▶ Start measurement</button>
+<button class="btn" id="btnStop">■ Stop</button>
+
+<div id="statusEl">Waiting...</div>
+
+<canvas id="chartCanvas" height="180"></canvas>
+
+<video id="videoEl" autoplay playsinline muted></video>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d', {willReadFrequently: true});
+const video = document.getElementById('videoEl');
+const fluorValEl = document.getElementById('fluorVal');
+const luxInfoEl = document.getElementById('luxInfo');
+const phaseEl = document.getElementById('phaseInfo');
+const btnStart = document.getElementById('btnStart');
+const btnStop = document.getElementById('btnStop');
+const deviceSel = document.getElementById('deviceSel');
+const intervalSlider = document.getElementById('intervalSlider');
+const intervalOut = document.getElementById('intervalOut');
+intervalSlider.oninput = () => intervalOut.textContent = `${intervalSlider.value} min`;
+const statusEl = document.getElementById('statusEl');
+
+// Algorithm constants (see steps 1-16 spec)
+const STAB_MS = 3000;          // step 2: stabilization after camera start
+const REC_WINDOW_MS = 500;     // step 5: recording window after emission detected
+const SIGMA_K = 6;             // step 11: region segmentation threshold (6 sigma of background)
+const DETECT_SIGMA = 3;        // step 5: "wake" threshold on consecutive-frame difference
+const MIN_PIX = 60;            // step 5: min. pixels above DETECT_SIGMA to count as emission
+const MIN_PIX_BLOB = 10;       // step 11: min. region (blob) size
+const DETECT_TIMEOUT_MS = 3000;// safety net: max time to wait for emission
+const FETCH_TIMEOUT_MS = 3000; // safety net: max time to wait for any /laseron /laseroff /lux request
+const LUX_DRIFT_LIMIT = 0.20;  // step 7: allowed ambient-light change
+const RETRY_DELAY_MS = 3 * 60 * 1000; // step 7: pause before returning to step 3
+const SAT_VALUE = 255;         // step 9: pixel saturation threshold
+// AGC/AEC diagnostic only (not the step-9 mask): real compressed USB webcam video rarely outputs
+// an exact 255 even when the sensor is effectively saturated, so this check uses a looser,
+// near-saturation threshold to actually catch it.
+const AGC_SAT_THRESHOLD = 250;
+// Minimum std floor: with only 3 background samples on 8-bit quantized pixels, per-pixel std
+// frequently rounds to ~0 on static image areas, which would make the sigma-scaled threshold ~0
+// too and pass nearly every pixel. Flooring it keeps the threshold meaningful everywhere.
+const STD_FLOOR = 1.5;
+
+let running = false;
+let stream = null;
+let width = 0, height = 0, n = 0;
+let fifo = [];         // step 3: FIFO buffer of the last 3 frames (before laser)
+let fifoRunning = false;
+
+// Selection: the 3 brightest (net-growing) areas per measurement are averaged into one
+// fluorescence value (see step 17 in cycle()).
+const TOP_N = 3;
+
+// Rolling history chart: fluorescence and ambient light across the last HISTORY_LEN completed
+// measurements (a FIFO window, oldest points drop off as new ones arrive), not the dynamics
+// within a single 500ms recording window.
+const HISTORY_LEN = 120;
+const HISTORY_STORAGE_KEY = 'chloro_history_v1';
+const history = []; // { label, fluorescence, lux }
+const chartCtx = document.getElementById('chartCanvas').getContext('2d');
+const chart = new Chart(chartCtx, {
+  type: 'line',
+  data: { labels: [], datasets: [
+    {
+      label: 'Fluorescence',
+      data: [],
+      borderColor: '#0a6b32',
+      backgroundColor: 'transparent',
+      yAxisID: 'yFluor',
+      pointRadius: 2,
+      tension: 0.2
+    },
+    {
+      label: 'Ambient light (lux)',
+      data: [],
+      borderColor: '#f9a825',
+      backgroundColor: 'transparent',
+      yAxisID: 'yLux',
+      pointRadius: 2,
+      tension: 0.2
+    }
+  ] },
+  options: {
+    animation: false,
+    responsive: true,
+    plugins: { legend: { display: true, labels: { boxWidth: 12 } } },
+    scales: {
+      x: { title: { display: true, text: 'measurement time' }, ticks: { maxRotation: 45 } },
+      yFluor: { type: 'linear', position: 'left', title: { display: true, text: 'fluorescence' } },
+      yLux: { type: 'linear', position: 'right', title: { display: true, text: 'lux' }, grid: { drawOnChartArea: false } }
+    }
+  }
+});
+
+function renderHistoryChart() {
+  chart.data.labels = history.map(h => h.label);
+  chart.data.datasets[0].data = history.map(h => +h.fluorescence.toFixed(3));
+  chart.data.datasets[1].data = history.map(h => +h.lux.toFixed(2));
+  chart.update();
+}
+
+function saveHistory() {
+  try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history)); }
+  catch (e) { /* storage unavailable/full — history just won't persist */ }
+}
+
+function loadHistory() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY) || '[]');
+    if (Array.isArray(stored)) history.push(...stored.slice(-HISTORY_LEN));
+  } catch (e) { /* corrupt/missing data — start with empty history */ }
+}
+
+function addHistoryPoint(fluorescence, lux) {
+  history.push({ label: new Date().toLocaleTimeString(), fluorescence, lux });
+  if (history.length > HISTORY_LEN) history.shift();
+  renderHistoryChart();
+  saveHistory();
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function log(msg, isErr = false) { statusEl.textContent = msg; statusEl.className = isErr ? 'err' : ''; }
+function phase(msg) { phaseEl.textContent = msg; }
+
+function serverBase() {
+  let ip = document.getElementById('serverIp').value.trim();
+  if (!ip.startsWith('http')) ip = 'http://' + ip;
+  return ip.replace(/\/$/, '');
+}
+
+async function laserOn()  { await fetch(`${serverBase()}/redon`,  {signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)}); }
+async function laserOff() { try { await fetch(`${serverBase()}/redoff`, {signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)}); } catch(e) {} }
+async function readLux() {
+  const r = await fetch(`${serverBase()}/lux`, {signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)});
+  if (!r.ok) throw new Error(`HTTP ${r.status} from /lux`);
+  const j = await r.json();
+  if (typeof j.lux !== 'number' || !Number.isFinite(j.lux)) {
+    throw new Error(`unexpected /lux response: ${JSON.stringify(j)}`);
+  }
+  return j.lux;
+}
+
+async function enumCameras() {
+  try { const t = await navigator.mediaDevices.getUserMedia({video:true}); t.getTracks().forEach(tr=>tr.stop()); } catch(e){}
+  const devs = await navigator.mediaDevices.enumerateDevices();
+  deviceSel.innerHTML = '';
+  devs.filter(d => d.kind === 'videoinput').forEach((d, i) => {
+    const o = document.createElement('option');
+    o.value = d.deviceId;
+    o.textContent = d.label || `Camera ${i+1}`;
+    deviceSel.appendChild(o);
+  });
+}
+
+async function openCamera() {
+  const deviceId = deviceSel.value;
+  const c = deviceId
+    ? {video:{deviceId:{exact:deviceId}, width:480, height:360}}
+    : {video:{width:480, height:360}};
+  stream = await navigator.mediaDevices.getUserMedia(c);
+  video.srcObject = stream;
+  await new Promise(r => { video.onloadedmetadata = () => video.play().then(r); });
+  width  = canvas.width  = video.videoWidth  || 480;
+  height = canvas.height = video.videoHeight || 360;
+  n = width * height;
+  await lockExposure();
+}
+
+// Best-effort: auto-exposure/auto-white-balance readjusting when the laser turns on can shift
+// the brightness of the whole frame, not just the fluorescent spots, which then floods the
+// 6-sigma threshold everywhere. Locking to manual mode avoids that at the source when the
+// camera/browser exposes the capability; if not supported this silently does nothing.
+async function lockExposure() {
+  const track = stream.getVideoTracks()[0];
+  if (!track || !track.getCapabilities) return;
+  try {
+    const caps = track.getCapabilities();
+    const advanced = {};
+    if (caps.exposureMode && caps.exposureMode.includes('manual')) advanced.exposureMode = 'manual';
+    if (caps.whiteBalanceMode && caps.whiteBalanceMode.includes('manual')) advanced.whiteBalanceMode = 'manual';
+    if (caps.focusMode && caps.focusMode.includes('manual')) advanced.focusMode = 'manual';
+    if (Object.keys(advanced).length) {
+      await track.applyConstraints({ advanced: [advanced] });
+      log(`Locked camera controls: ${Object.keys(advanced).join(', ')}.`);
+    }
+  } catch (e) { /* not supported on this camera/browser — fall back to software correction */ }
+}
+
+function closeCamera() {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+}
+
+// Cameras/browsers deliver gamma-encoded pixel values (~sRGB, gamma ~2.2), but every intensity
+// calculation downstream (background subtraction, sigma thresholds, gain correction) assumes
+// values are linear in light intensity. Decode sRGB gamma once per 8-bit level via a lookup
+// table so it's effectively free per pixel, then apply it wherever raw pixel bytes are read.
+const GAMMA_LUT = new Float32Array(256);
+for (let v = 0; v < 256; v++) {
+  const c = v / 255;
+  const lin = c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  GAMMA_LUT[v] = lin * 255;
+}
+
+// Grabs the current video frame, draws it to the canvas (live preview), returns the red channel
+// in linear light (gamma decoded). The camera has a red bandpass filter, so the R channel
+// carries the fluorescence signal. The canvas itself is left gamma-encoded for normal viewing —
+// only the extracted numeric values used for analysis are linearized.
+function grabRed() {
+  ctx.drawImage(video, 0, 0, width, height);
+  const data = ctx.getImageData(0, 0, width, height).data;
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i++) out[i] = GAMMA_LUT[data[i * 4]];
+  return out;
+}
+
+// --- Step 3: continuous FIFO buffer (last 3 frames) before the laser turns on ---
+function startFIFO() {
+  fifoRunning = true;
+  function onFrame() {
+    if (!fifoRunning) return;
+    fifo.push(grabRed());
+    if (fifo.length > 3) fifo.shift();
+    video.requestVideoFrameCallback(onFrame);
+  }
+  video.requestVideoFrameCallback(onFrame);
+}
+function stopFIFO() { fifoRunning = false; }
+
+function fifoMeanStd(frames) {
+  const mean = new Float32Array(n), std = new Float32Array(n);
+  for (let i = 0; i < n; i++) { let s = 0; for (const f of frames) s += f[i]; mean[i] = s / frames.length; }
+  for (let i = 0; i < n; i++) { let v = 0; for (const f of frames) v += (f[i]-mean[i])**2; std[i] = Math.sqrt(v / frames.length); }
+  return { mean, std };
+}
+
+// AGC/AEC diagnostic: true if any pixel in this single frame is near-saturated (>= AGC_SAT_THRESHOLD).
+function hasSaturation(frame) {
+  for (let i = 0; i < frame.length; i++) if (frame[i] >= AGC_SAT_THRESHOLD) return true;
+  return false;
+}
+
+// --- Step 5: detect emission via consecutive-frame difference ---
+// Also tracks saturation on every frame checked here, numbered from 1 = the first frame grabbed
+// right after the laser turned on. Needed so the AGC/AEC check still reports something when
+// emission is never detected at all (the recording phase, and its own saturation check, is
+// never reached in that case).
+function waitForEmission(thrArr) {
+  return new Promise((resolve) => {
+    let prev = grabRed();
+    let frameNum = 1;
+    const satFrames = [];
+    if (hasSaturation(prev)) satFrames.push(frameNum);
+    let settled = false;
+    const finish = (frame) => { if (!settled) { settled = true; resolve({ frame, satFrames, frameCount: frameNum }); } };
+    const timeoutId = setTimeout(() => finish(null), DETECT_TIMEOUT_MS);
+    function onFrame() {
+      if (settled || !running) { finish(null); return; }
+      const cur = grabRed();
+      frameNum++;
+      if (hasSaturation(cur)) satFrames.push(frameNum);
+      let cnt = 0;
+      for (let i = 0; i < n; i++) if ((cur[i] - prev[i]) > thrArr[i]) cnt++;
+      if (cnt >= MIN_PIX) { clearTimeout(timeoutId); finish(cur); return; }
+      prev = cur;
+      video.requestVideoFrameCallback(onFrame);
+    }
+    video.requestVideoFrameCallback(onFrame);
+  });
+}
+
+// --- Step 5 (continued): record the maximum number of frames for REC_WINDOW_MS ---
+function recordWindow() {
+  return new Promise((resolve) => {
+    const frames = [], times = [];
+    const t0 = performance.now();
+    function onFrame() {
+      const t = performance.now() - t0;
+      if (t > REC_WINDOW_MS || !running) { resolve({frames, times}); return; }
+      frames.push(grabRed());
+      times.push(t);
+      video.requestVideoFrameCallback(onFrame);
+    }
+    video.requestVideoFrameCallback(onFrame);
+  });
+}
+
+// --- Step 9: mask of saturated pixels (== 255) from the last recorded frame ---
+function buildMask(lastFrame) {
+  const m = new Uint8Array(n);
+  for (let i = 0; i < n; i++) m[i] = lastFrame[i] < SAT_VALUE ? 1 : 0;
+  return m;
+}
+
+// AGC/AEC diagnostic: the camera's auto-gain/auto-exposure can keep adjusting for a few frames
+// after the laser turns on, driving pixels to saturation independent of any real fluorescence.
+// Returns frame numbers continuing from startNum (so recording-window frames number on from
+// wherever the detection-wait phase left off) that contain any saturated pixel.
+function findSaturatedFrames(frames, startNum) {
+  const numbers = [];
+  frames.forEach((f, idx) => {
+    if (hasSaturation(f)) numbers.push(startNum + idx + 1);
+  });
+  return numbers;
+}
+
+// --- Step 10: masked frame minus background ---
+// Also removes the frame's median (robust to a few real bright spots) diff as a global-shift
+// correction: if auto-exposure/auto-gain shifts the WHOLE frame's brightness after the laser
+// turns on, that shift alone can push most of the frame over a threshold sized for a static
+// background, producing many spurious "areas" spread across the whole image. Subtracting the
+// median removes that common shift while leaving genuine local spikes (real fluorescence) intact.
+function subtractBgMasked(frame, bgMean, mask) {
+  const diffs = [];
+  for (let i = 0; i < n; i++) if (mask[i]) diffs.push(frame[i] - bgMean[i]);
+  diffs.sort((a, b) => a - b);
+  const mid = diffs.length >> 1;
+  const globalShift = diffs.length ? (diffs.length % 2 ? diffs[mid] : (diffs[mid - 1] + diffs[mid]) / 2) : 0;
+
+  const d = new Float32Array(n);
+  for (let i = 0; i < n; i++) d[i] = mask[i] ? (frame[i] - bgMean[i] - globalShift) : 0;
+  d.globalShift = globalShift;
+  return d;
+}
+
+// --- Step 11: segment areas > SIGMA_K * std(background), respecting the mask ---
+// Uses 8-connectivity: a real fluorescence spot has internal texture/noise, so some interior
+// pixels dip below the threshold. With 4-connectivity that reliably shreds one real spot into
+// dozens of tiny separate regions; 8-connectivity (diagonal neighbors) closes those gaps without
+// growing the candidate set, so it doesn't risk merging genuinely distinct nearby spots either.
+function findRegions(diffFrame, thrArr, mask, minPix) {
+  const cand = new Uint8Array(n);
+  for (let i = 0; i < n; i++) cand[i] = (mask[i] && diffFrame[i] > thrArr[i]) ? 1 : 0;
+
+  const visited = new Uint8Array(n);
+  const stack = new Int32Array(n);
+  const regions = [];
+  for (let start = 0; start < n; start++) {
+    if (!cand[start] || visited[start]) continue;
+    let sp = 0;
+    stack[sp++] = start;
+    visited[start] = 1;
+    const pixels = [];
+    while (sp > 0) {
+      const idx = stack[--sp];
+      pixels.push(idx);
+      const x = idx % width, y = (idx / width) | 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+          const ni = ny * width + nx;
+          if (cand[ni] && !visited[ni]) { visited[ni] = 1; stack[sp++] = ni; }
+        }
+      }
+    }
+    if (pixels.length >= minPix) regions.push(Int32Array.from(pixels));
+  }
+  return regions;
+}
+
+// Diagnostic overlay: draws a box around each detected area on the live-preview canvas so the
+// spatial pattern of "areas detected" is visible (clustered on real spots vs. scattered noise
+// vs. a periodic grid, which would point at compression-block artifacts).
+function drawRegionOverlay(regions) {
+  ctx.strokeStyle = '#ff00ff';
+  ctx.lineWidth = 1;
+  ctx.font = 'bold 12px sans-serif';
+  ctx.textBaseline = 'bottom';
+  regions.forEach((px, idx) => {
+    let minX = width, maxX = 0, minY = height, maxY = 0;
+    for (const i of px) {
+      const x = i % width, y = (i / width) | 0;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+    ctx.strokeRect(minX, minY, Math.max(1, maxX - minX), Math.max(1, maxY - minY));
+
+    // Numbered label above the box (id matches the area numbering used in the log and chart).
+    const label = String(idx + 1);
+    const labelY = minY > 12 ? minY - 2 : maxY + 13;
+    ctx.fillStyle = '#ff00ff';
+    ctx.fillRect(minX, labelY - 11, ctx.measureText(label).width + 4, 13);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(label, minX + 2, labelY);
+  });
+}
+
+// Counts down via phase() (the small transient status line), never via log()/statusEl — the
+// latter holds the last measurement's diagnostic result, which must stay visible for the user
+// to read until the next measurement actually starts, not get overwritten every second by a tick.
+async function sleepCancelable(ms, label) {
+  const end = Date.now() + ms;
+  while (Date.now() < end && running) {
+    phase(`${label} (${Math.ceil((end - Date.now()) / 1000)}s)`);
+    await sleep(1000);
+  }
+}
+
+function resetButtons() {
+  btnStop.style.display = 'none';
+  btnStart.style.display = 'block';
+  btnStart.disabled = false;
+}
+
+// --- One measurement cycle: steps 3-16.
+// Returns 'retry' only for the step-7 ambient-light-drift case (the only outcome the spec
+// says should loop back to step 3 automatically); every other outcome ends the run. ---
+async function cycle() {
+  // Step 3: FIFO background buffer (before the laser)
+  phase('Background buffer (FIFO)');
+  fifo = [];
+  startFIFO();
+  const fifoDeadline = Date.now() + 3000;
+  while (fifo.length < 3 && running && Date.now() < fifoDeadline) await sleep(30);
+  stopFIFO();
+  if (!running) return 'done';
+  if (fifo.length < 3) { log('Failed to collect the FIFO background.', true); return 'done'; }
+
+  const { mean: bgMean, std: bgStd } = fifoMeanStd(fifo);
+
+  // Step 4: read ambient lux, then laser ON
+  phase('Reading lux + laser ON');
+  let lux1;
+  try { lux1 = await readLux(); }
+  catch (e) { log(`No response from the laser server (/lux): ${e.message}`, true); return 'done'; }
+  try { await laserOn(); }
+  catch (e) { log(`Failed to turn the laser on: ${e.message}`, true); return 'done'; }
+
+  // Step 5: detect emission + record for 500 ms
+  phase('Waiting for laser emission');
+  const detectThr = new Float32Array(n);
+  for (let i = 0; i < n; i++) detectThr[i] = DETECT_SIGMA * Math.max(bgStd[i], STD_FLOOR);
+  const { frame: emission, satFrames: waitSatFrames, frameCount: waitFrameCount } = await waitForEmission(detectThr);
+  if (!emission) {
+    const satLine = waitSatFrames.length
+      ? `AGC/AEC check — saturated pixels in frame(s): ${waitSatFrames.join(', ')} (of ${waitFrameCount} while waiting for emission).`
+      : `AGC/AEC check — no saturated pixels in ${waitFrameCount} frame(s) while waiting for emission.`;
+    log(`${satLine}\nNo emission detected within ${DETECT_TIMEOUT_MS} ms.`, true);
+    await laserOff();
+    return 'done';
+  }
+  phase(`Recording (${REC_WINDOW_MS} ms)`);
+  const { frames } = await recordWindow();
+  const satFrames = [...waitSatFrames, ...findSaturatedFrames(frames, waitFrameCount)];
+  const totalFrames = waitFrameCount + frames.length;
+  const satFramesLine = satFrames.length
+    ? `AGC/AEC check — saturated pixels in frame(s): ${satFrames.join(', ')} (of ${totalFrames} since laser on).`
+    : `AGC/AEC check — no saturated pixels in ${totalFrames} frame(s) since laser on.`;
+
+  // Step 6-7: laser OFF, then re-read ambient lux (pure ambient, laser no longer contributing),
+  // check drift
+  await laserOff();
+  let lux2;
+  try { lux2 = await readLux(); } catch (e) { lux2 = lux1; }
+  luxInfoEl.textContent = `Ambient light: ${lux1.toFixed(2)} → ${lux2.toFixed(2)} lux`;
+
+  const drift = lux1 > 0 ? Math.abs(lux2 - lux1) / lux1 : 0;
+  if (drift > LUX_DRIFT_LIMIT) {
+    log(`${satFramesLine}\nAmbient light changed by ${(drift*100).toFixed(1)}% > ${LUX_DRIFT_LIMIT*100}% — measurement discarded.`, true);
+    await sleepCancelable(RETRY_DELAY_MS, '3 min pause — ambient light changed too much');
+    return running ? 'retry' : 'done';
+  }
+  if (!running || !frames.length) return 'done';
+
+  // Step 9-10: mask from the last frame, subtract background from each masked frame
+  const lastFrame = frames[frames.length - 1];
+  const mask = buildMask(lastFrame);
+  const diffFrames = frames.map(f => subtractBgMasked(f, bgMean, mask));
+
+  // Diagnostics: how much of the frame is excluded as saturated. A high % here means real
+  // spots are clipping at 255, so the mask cuts out their bright core and leaves only a
+  // ragged boundary ring — that ring is what tends to fragment into many small "areas".
+  let satN = 0;
+  for (let i = 0; i < n; i++) if (!mask[i]) satN++;
+  const satPct = (satN / n) * 100;
+
+  // Step 11: segment areas on the last difference frame
+  const thr6 = new Float32Array(n);
+  for (let i = 0; i < n; i++) thr6[i] = SIGMA_K * Math.max(bgStd[i], STD_FLOOR);
+  const regions = findRegions(diffFrames[diffFrames.length - 1], thr6, mask, MIN_PIX_BLOB);
+  if (!regions.length) {
+    log(`${satFramesLine}\nNo areas above the 6σ threshold. Saturated: ${satPct.toFixed(1)}% of frame.`, true);
+    phase('No fluorescence signal');
+    return 'done';
+  }
+
+  drawRegionOverlay(regions);
+  const sizes = regions.map(r => r.length).sort((a,b) => a-b);
+  const sizeStats = `min=${sizes[0]} median=${sizes[Math.floor(sizes.length/2)]} max=${sizes[sizes.length-1]}`;
+  const lastShift = diffFrames[diffFrames.length - 1].globalShift;
+  const diagLine = `Diagnostics — areas: ${regions.length} (size ${sizeStats}), saturated: ${satPct.toFixed(1)}% of frame, global shift: ${lastShift.toFixed(2)}.`;
+
+  // Steps 12-15: per-area gainCorrection (ambient lux / background at that area) and
+  // fluorescence over time. Uses the average of lux1 (before laser) and lux2 (after laser off)
+  // rather than lux1 alone, so the compensation reflects the ambient light actually bracketing
+  // the whole measurement, not just a single snapshot before it started.
+  // In total darkness (0 lux) there is no ambient light to compensate against — the ratio would
+  // collapse to 0 and erase every real fluorescence reading, so gain is left at 1 (pass-through)
+  // instead.
+  const luxAvg = (lux1 + lux2) / 2;
+  const regionResults = regions.map((px, idx) => {
+    let bgSum = 0;
+    for (const i of px) bgSum += bgMean[i];
+    const bgMeanRegion = bgSum / px.length;
+    const gainCorrection = luxAvg <= 0 ? 1 : (bgMeanRegion > 0 ? luxAvg / bgMeanRegion : 0);
+    const series = diffFrames.map(df => {
+      let s = 0;
+      for (const i of px) s += df[i];
+      return (s / px.length) * gainCorrection;
+    });
+    return { id: idx + 1, count: px.length, gainCorrection, series };
+  });
+
+  // Step 16: eliminate areas whose fluorescence does not show net growth (last frame > second
+  // frame). Baseline starts at the second frame, not the first: the very first recorded frame
+  // is the one where emission was just detected and can still be transitional/noisy.
+  const increasing = regionResults.filter(r => r.series.length > 1 && r.series[r.series.length - 1] > r.series[1]);
+  if (!increasing.length) {
+    log(`${satFramesLine}\n${diagLine}\nNo area shows net-growing fluorescence (last frame > second frame).`, true);
+    phase('No fluorescence signal');
+    return 'done';
+  }
+
+  // Step 17: each area's value is the average of its last 3 frames; the headline fluorescence
+  // is the average across the 3 brightest areas by that value.
+  const lastNAvg = (series, count) => {
+    const tail = series.slice(-count);
+    return tail.reduce((a, b) => a + b, 0) / tail.length;
+  };
+  const ranked = increasing
+    .map(r => ({ ...r, value: lastNAvg(r.series, 3) }))
+    .sort((a, b) => b.value - a.value);
+  const top = ranked.slice(0, TOP_N);
+  const fluorescence = top.reduce((a, r) => a + r.value, 0) / top.length;
+
+  fluorValEl.textContent = fluorescence.toFixed(2);
+  addHistoryPoint(fluorescence, luxAvg);
+  const topLine = top.map(r => `#${r.id} (${r.count}px, gain=${r.gainCorrection.toFixed(3)}, value=${r.value.toFixed(2)})`).join(', ');
+  log(`${satFramesLine}\n${diagLine}\nIncreasing areas: ${increasing.length}/${regionResults.length}. Top ${top.length}: ${topLine}. Fluorescence (avg of top ${top.length}): ${fluorescence.toFixed(2)}.`);
+  phase('Measurement done');
+  return 'done';
+}
+
+async function mainLoop() {
+  try {
+    phase('Initializing camera');
+    await openCamera();
+
+    phase(`Stabilizing camera (${STAB_MS/1000}s)`);
+    const stabEnd = Date.now() + STAB_MS;
+    while (Date.now() < stabEnd && running) { grabRed(); await sleep(30); }
+
+    // Cyclic measurements: after each completed attempt (any outcome), wait the user-configured
+    // interval before the next one. The lux-drift retry-after-3-min inside cycle() is separate
+    // and still handled by the inner loop below.
+    while (running) {
+      let result = 'retry';
+      while (running && result === 'retry') result = await cycle();
+      if (!running) break;
+
+      const mins = parseInt(intervalSlider.value);
+      await sleepCancelable(mins * 60000, 'Waiting until next measurement');
+    }
+  } catch (e) {
+    log('Critical error: ' + e.message, true);
+    phase('Error — stopped');
+  } finally {
+    running = false;
+    stopFIFO();
+    closeCamera();
+    resetButtons();
+  }
+}
+
+btnStart.onclick = async () => {
+  if (running) return;
+  running = true;
+  btnStart.disabled = true;
+  btnStart.style.display = 'none';
+  btnStop.style.display = 'block';
+  fluorValEl.textContent = '…';
+  mainLoop();
+};
+
+btnStop.onclick = async () => {
+  running = false;
+  stopFIFO();
+  await laserOff();
+  closeCamera();
+  resetButtons();
+  phase('Stopped by user');
+  log('Measurement stopped.');
+};
+
+enumCameras();
+navigator.mediaDevices.addEventListener('devicechange', enumCameras);
+
+loadHistory();
+renderHistoryChart();
+</script>
+</body>
+</html>
